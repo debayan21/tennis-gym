@@ -259,6 +259,10 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .planbox .seg{margin-top:10px}
 .planbox .seg button{font-size:13px;padding:5px 10px}
 .planbox .csvbar{margin-top:12px}
+.finishday{margin-top:14px;box-shadow:inset 0 0 0 2px var(--ball)}
+.finishday.locked{box-shadow:inset 0 0 0 2px var(--court)}
+.finishday .sum{font-size:14px;color:var(--muted);margin:0 0 10px}
+.finishday .sum b{color:var(--ink)}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -1112,17 +1116,20 @@ function renderDiet(){
       <div class="plantitle"><span class="k">${rec.locked?"Submitted plan":rec.manual?"Your pick":"Auto plan"}</span><b>${esc(plan.full)}</b><span class="k">${tot.k.toLocaleString()} kcal · P ${tot.p} g</span></div>
       <p class="sum">${rec.locked?(autoType(d)!==type?`This day now shows ${esc(autoWhy(d))}, which would suggest the ${esc(DIET[autoType(d)].full.toLowerCase())}. Your submitted plan stays; delete it to switch.`:"Locked for this day. Delete the day plan to change it."):rec.manual?"You picked this plan; it won’t change on its own. Tap Auto to let it follow your workouts.":`Picked from ${esc(autoWhy(d))}. It updates as you log workouts until you submit it.`}</p>
       ${rec.locked?"":`<div class="seg"><button data-dtype="auto" class="${rec.manual?"":"on"}">Auto</button>${Object.entries(DIET).map(([k,v])=>`<button data-dtype="${k}" class="${rec.manual===k?"on":""}">${esc(v.label)}</button>`).join("")}</div>`}
-      <div class="csvbar">${rec.locked?"":`<button class="save" data-dsubmit type="button" style="margin:0">Submit plan for ${d===td?"today":esc(fmtDate(d))}</button>`}${(rec.locked||rec.manual||Object.values(meals).some(Boolean)||Object.values(hab).some(Boolean)||rec.note)?`<button class="export" data-dclear type="button" style="border-color:var(--line);color:var(--muted)">Delete this day’s plan</button>`:""}</div>
+
     </div>
     <div class="kpis"><div class="kpi"><div class="big">${got.k.toLocaleString()}</div><div class="lbl">of ${tot.k.toLocaleString()} kcal</div></div><div class="kpi"><div class="big">${got.p}<span style="font-size:18px"> g</span></div><div class="lbl">of ${tot.p} g protein</div></div><div class="kpi"><div class="big">${eaten.length}/${plan.meals.length}</div><div class="lbl">Meals done</div></div></div>
-    <div class="csvbar">${eaten.length<plan.meals.length?`<button class="export" data-dall type="button">Mark all meals eaten</button>`:""}</div>
+    ${rec.locked?"":`<div class="csvbar">${eaten.length<plan.meals.length?`<button class="export" data-dall type="button">Mark all meals eaten</button>`:""}</div>`}
     <p class="daynote">${esc(plan.full)}. ${esc(plan.note)}</p>
-    ${plan.meals.map(m=>`<article class="ex ${meals[m.id]?"done":""}"><div class="code">${meals[m.id]?"✓":esc(m.id==="fa"?"F":m.name[0])}</div><h3 class="name">${esc(m.name)}</h3><div class="rx">${esc(m.what)}</div>${m.k?`<div class="stats"><span>${m.k} kcal</span><span class="k">P ${m.p} · C ${m.c} · F ${m.f} g</span></div>`:""}<button class="markdone ${meals[m.id]?"on":""}" data-meal="${m.id}">${meals[m.id]?(m.id==="fa"?"Fasted ✓ · Undo":"Eaten ✓ · Undo"):(m.id==="fa"?"Mark fast done":"Mark eaten")}</button></article>`).join("")}
+    ${plan.meals.map(m=>`<article class="ex ${meals[m.id]?"done":""}"><div class="code">${meals[m.id]?"✓":esc(m.id==="fa"?"F":m.name[0])}</div><h3 class="name">${esc(m.name)}</h3><div class="rx">${esc(m.what)}</div>${m.k?`<div class="stats"><span>${m.k} kcal</span><span class="k">P ${m.p} · C ${m.c} · F ${m.f} g</span></div>`:""}${rec.locked?`<div class="lastline">${meals[m.id]?(m.id==="fa"?"Fasted ✓":"Eaten ✓"):"Not eaten"}</div>`:`<button class="markdone ${meals[m.id]?"on":""}" data-meal="${m.id}">${meals[m.id]?(m.id==="fa"?"Fasted ✓ · Undo":"Eaten ✓ · Undo"):(m.id==="fa"?"Mark fast done":"Mark eaten")}</button>`}</article>`).join("")}
   </section>
   <section class="block"><div class="bhead"><h2>Daily rules</h2><span class="bn">Tick what you hit</span></div>
-    ${habits.map(([k,l])=>`<article class="ex ${hab[k]?"done":""}" style="padding-left:56px"><div class="code">${hab[k]?"✓":"•"}</div><h3 class="name" style="font-size:15px">${esc(l)}</h3><button class="markdone ${hab[k]?"on":""}" data-habit="${k}">${hab[k]?"Done ✓ · Undo":"Mark done"}</button></article>`).join("")}
-    <div class="card" style="margin-top:10px"><div class="fields"><label class="wide">Diet note<input type="text" data-dnote maxlength="200" value="${esc(rec.note||"")}" placeholder="Swaps, cravings, eating out…"></label></div></div>
+    ${habits.map(([k,l])=>`<article class="ex ${hab[k]?"done":""}" style="padding-left:56px"><div class="code">${hab[k]?"✓":"•"}</div><h3 class="name" style="font-size:15px">${esc(l)}</h3>${rec.locked?`<div class="lastline">${hab[k]?"Done ✓":"Not done"}</div>`:`<button class="markdone ${hab[k]?"on":""}" data-habit="${k}">${hab[k]?"Done ✓ · Undo":"Mark done"}</button>`}</article>`).join("")}
+    <div class="card" style="margin-top:10px"><div class="fields"><label class="wide">Diet note<input type="text" data-dnote maxlength="200" value="${esc(rec.note||"")}" placeholder="Swaps, cravings, eating out…" ${rec.locked?"disabled":""}></label></div></div>
   </section>
+  <div class="card finishday ${rec.locked?"locked":""}">${rec.locked
+    ? `<p class="sum"><b>Submitted ✓</b> ${esc(plan.full)}: ${eaten.length}/${plan.meals.length} meals, ${got.k.toLocaleString()} kcal, protein ${got.p} g. To change this day, delete its plan and start again.</p><button class="export" data-dclear type="button" style="margin:0;border-color:var(--danger);color:var(--danger)">Delete this day’s plan</button>`
+    : `<p class="sum">${eaten.length<plan.meals.length?`${eaten.length} of ${plan.meals.length} meals ticked so far.`:"All meals ticked."} Submit when the day’s eating is done; it locks this plan for ${d===td?"today":esc(fmtDate(d))}.</p><button class="save" data-dsubmit type="button" style="margin:0;width:100%">Submit plan for ${d===td?"today":esc(fmtDate(d))}</button>`}</div>
   <section class="block" id="weighin"><div class="bhead"><h2>Sunday weigh-in</h2><span class="bn">Weekly ritual: fasted, before breakfast</span></div>
     <div class="card ritual">
       <p class="sum">${doneThisWeek?"✓ Done this week.":(parse(td).getDay()===0?"It’s Sunday: weigh in now, fasted, after the bathroom.":"Next weigh-in: Sunday morning.")} ${toGo!=null?`<b>${toGo>0?toGo+" kg to go":"Goal reached"}</b> to ${GOAL.kg} kg.`:""}</p>
@@ -1146,9 +1153,12 @@ async function dietClick(e){
   if(t.closest("[data-dtoday]")){ dietDate=today(); renderDiet(); return true; }
   const st=t.closest("[data-dstep]"); if(st){ const x=parse(d); x.setDate(x.getDate()+(+st.dataset.dstep)); dietDate=iso(x); renderDiet(); return true; }
   const ty=t.closest("[data-dtype]"); if(ty){ const r=dayRec(d)||{}; if(r.locked) return true; if(ty.dataset.dtype==="auto") delete r.manual; else r.manual=ty.dataset.dtype; await saveDay(d,r); renderDiet(); return true; }
-  if(t.closest("[data-dsubmit]")){ const r=dayRec(d)||{}; r.type=dayPlanType(d); r.locked=true; await saveDay(d,r); renderDiet(); return true; }
+  if(t.closest("[data-dsubmit]")){ const r=dayRec(d)||{}, pl=DIET[dayPlanType(d)], n=pl.meals.filter(m=>(r.meals||{})[m.id]).length;
+    if(n<pl.meals.length && !(await ask(`${pl.meals.length-n} of ${pl.meals.length} meals aren’t ticked. Submit ${fmtDate(d)} anyway?`,"Submit","Keep editing"))) return true;
+    r.type=dayPlanType(d); r.locked=true; await saveDay(d,r); renderDiet(); return true; }
   if(t.closest("[data-dall]")){ const r=dayRec(d)||{}; r.meals=r.meals||{}; DIET[dayPlanType(d)].meals.forEach(m=>r.meals[m.id]=true); await saveDay(d,r); renderDiet(); return true; }
   if(t.closest("[data-dclear]")){ if(!(await ask(`Delete the diet plan for ${fmtDate(d)}? This unlocks the plan, unticks all meals and daily rules and removes the note. The day goes back to auto.`,"Delete day plan","Keep"))) return true; logs[dkey(d)]=[]; try{ await store.save(dkey(d)); }catch(e){} renderDiet(); return true; }
+  if((t.closest("[data-meal]")||t.closest("[data-habit]")||t.closest("[data-dall]")) && (dayRec(d)||{}).locked) return true;
   const ml=t.closest("[data-meal]"); if(ml){ const r=dayRec(d)||{}; r.meals=r.meals||{}; r.meals[ml.dataset.meal]=!r.meals[ml.dataset.meal]; await saveDay(d,r); renderDiet(); return true; }
   const hb=t.closest("[data-habit]"); if(hb){ const r=dayRec(d)||{}; r.habits=r.habits||{}; r.habits[hb.dataset.habit]=!r.habits[hb.dataset.habit]; await saveDay(d,r); renderDiet(); return true; }
   const wd=t.closest("[data-wdel]"); if(wd){ if(!(await ask("Delete this weigh-in?","Delete"))) return true; logs.weighins=(logs.weighins||[]).filter(x=>x.t!==+wd.dataset.wdel); await store.save("weighins"); renderDiet(); return true; }
