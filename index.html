@@ -213,10 +213,10 @@ footer p{margin:6px 0}
 <main id="main"></main>
 <div id="auth" class="modal" hidden><form class="box authbox" id="authForm" novalidate>
   <h2>Sign in to save your workouts</h2>
-  <p>Your log is stored in your account, so it’s safe and syncs between phone and laptop. Logging still works offline and syncs when you’re back online.</p>
-  <label>Email<input type="email" name="email" autocomplete="username" required></label>
-  <label>Password<input type="password" name="pw" autocomplete="current-password" minlength="6" required></label>
-  <div class="row"><button type="button" class="no" id="signupBtn">Create account</button><button type="submit" class="yes">Sign in</button></div>
+  <p>We’ll email you a sign-in code. No password needed, and you stay signed in on this device. Logging still works offline and syncs when you’re back online.</p>
+  <label>Email<input type="email" name="email" autocomplete="email" inputmode="email" required></label>
+  <label id="codeRow" hidden>Code from your email<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" pattern="[0-9]*"></label>
+  <div class="row"><button type="button" class="no" id="resendBtn" hidden>Send a new code</button><button type="submit" class="yes" id="authGo">Email me a code</button></div>
   <p class="msg" id="authMsg" role="status"></p>
 </form></div>
 <footer>
@@ -397,14 +397,27 @@ function setMode(){
   else { m.textContent="Not signed in. Your log is saved on this device only."; so.hidden=true; }
 }
 function showLogin(){ document.getElementById("auth").hidden=false; return new Promise(r=>{ loginDone=r; }); }
-async function doAuth(kind){
+let codeSentTo=null;
+async function sendCode(){
+  const f=document.getElementById("authForm"), m=document.getElementById("authMsg"), email=f.elements.email.value.trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ m.textContent="Enter a valid email address."; return; }
+  m.textContent="Sending your code…";
+  const {error}=await sb.auth.signInWithOtp({email, options:{shouldCreateUser:true}});
+  if(error){ m.textContent=/rate|seconds|limit/i.test(error.message)?"Too many codes requested. Wait a few minutes, then tap “Send a new code”.":error.message; document.getElementById("resendBtn").hidden=false; return; }
+  codeSentTo=email; f.elements.email.readOnly=true;
+  document.getElementById("codeRow").hidden=false; document.getElementById("resendBtn").hidden=false;
+  document.getElementById("authGo").textContent="Sign in";
+  m.textContent="Code sent to "+email+". It can take a minute; check spam too.";
+  f.elements.code.focus();
+}
+async function doAuth(){
   const f=document.getElementById("authForm"), m=document.getElementById("authMsg");
-  const email=f.elements.email.value.trim(), password=f.elements.pw.value;
-  if(!email || password.length<6){ m.textContent="Enter your email and a password of at least 6 characters."; return; }
-  m.textContent = kind==="up" ? "Creating your account…" : "Signing in…";
-  const r = kind==="up" ? await sb.auth.signUp({email,password}) : await sb.auth.signInWithPassword({email,password});
-  if(r.error){ m.textContent=r.error.message; return; }
-  if(!r.data.session){ m.textContent="Check your email and tap the confirm link, then come back here and tap Sign in."; return; }
+  if(!codeSentTo){ await sendCode(); return; }
+  const token=f.elements.code.value.replace(/\D/g,"");
+  if(token.length<6){ m.textContent="Enter the code from your email."; return; }
+  m.textContent="Signing in…";
+  const r=await sb.auth.verifyOtp({email:codeSentTo, token, type:"email"});
+  if(r.error || !r.data.session){ m.textContent=r.error&&/expired|invalid/i.test(r.error.message)?"That code is wrong or expired. Check it, or tap “Send a new code”.":(r.error?r.error.message:"Couldn’t sign in. Try again."); return; }
   user=r.data.session.user; store=cloudStore();
   try{ await loadCloud(); }catch(e){ m.textContent="Signed in, but couldn’t load your log. Check your connection."; }
   document.getElementById("auth").hidden=true; m.textContent=""; flush(); render();
@@ -924,8 +937,8 @@ document.getElementById("restoreFile").onchange=async e=>{
   }catch(err){ alert("That file isn’t a Tennis Gym backup."); }
   e.target.value="";
 };
-document.getElementById("authForm").addEventListener("submit",e=>{ e.preventDefault(); doAuth("in"); });
-document.getElementById("signupBtn").onclick=()=>doAuth("up");
+document.getElementById("authForm").addEventListener("submit",e=>{ e.preventDefault(); doAuth(); });
+document.getElementById("resendBtn").onclick=()=>{ codeSentTo=null; sendCode(); };
 document.getElementById("signoutBtn").onclick=async()=>{
   const n=pend.get().size;
   if(!(await ask(n?`${n} change${n>1?"s haven’t":" hasn’t"} synced yet and will be lost. Sign out anyway?`:"Sign out on this device? Your log stays safe in your account.","Sign out"))) return;
