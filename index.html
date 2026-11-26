@@ -47,7 +47,7 @@ button{font:inherit;color:inherit}
 header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--court);color:#fff;padding:14px 16px 0}
 .title{font-family:"Barlow Condensed",Arial Narrow,sans-serif;font-weight:700;font-size:26px;line-height:1;letter-spacing:.01em;margin:0}
 .sub{font-size:13px;opacity:.85;margin:4px 0 12px}
-nav.days{display:grid;grid-template-columns:repeat(6,1fr);gap:0;max-width:720px}
+nav.days{display:grid;grid-template-columns:repeat(4,1fr);gap:0;max-width:720px}
 nav.days a{display:block;text-decoration:none;padding:8px 6px 10px;border-bottom:4px solid transparent;text-align:left}
 nav.days a .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:20px;line-height:1;white-space:nowrap}
 nav.days a .f{font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -245,6 +245,12 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .wadd{display:flex;gap:6px;align-items:center}
 .wadd select{flex:1}
 .wcsv{flex:none;height:34px;border:1px dashed var(--line);background:transparent;color:var(--court);font-weight:600;font-size:13px;border-radius:8px;padding:0 10px;cursor:pointer;white-space:nowrap}
+.streaks .kpi .lbl+.lbl{font-size:12px}
+.progsw{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0 0}
+.progsw a{text-decoration:none;text-align:center;border:2px solid var(--line);background:var(--surface);border-radius:12px;padding:8px 4px;font-weight:700;font-family:"Barlow Condensed",sans-serif;font-size:18px;color:var(--ink);line-height:1.1}
+.progsw a span{display:block;font-family:Barlow,sans-serif;font-weight:500;font-size:12px;color:var(--muted)}
+.progsw a.on{background:var(--court);border-color:var(--court);color:#fff}
+.progsw a.on span{color:#fff;opacity:.85}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -566,7 +572,8 @@ async function initStore(){
 /* ---------- render ---------- */
 const nav=document.getElementById("nav"), main=document.getElementById("main");
 const open = new Set();
-function currentDay(){ const h=location.hash.slice(1); if(h===""||h==="week"||h==="stats"||h==="diet") return null; return DAYS.find(d=>d.id===h || "log-"+d.id===h) || DAYS[0]; }
+let lastProg="day1";
+function currentDay(){ const h=location.hash.slice(1); if(h===""||h==="week"||h==="stats"||h==="diet") return null; if(h==="program") return DAYS.find(d=>d.id===lastProg)||DAYS[0]; const d=DAYS.find(d=>d.id===h || "log-"+d.id===h) || DAYS[0]; if(!h.startsWith("log-")) lastProg=d.id; return d; }
 const inSession = () => location.hash.slice(1).startsWith("log-");
 
 function videoLinks(item){
@@ -607,8 +614,7 @@ function render(){
   rebuildProgram();
   const day=currentDay();
   const hh=location.hash, cur=k=>hh===k?'aria-current="page"':"";
-  nav.innerHTML=`<a href="#week" ${(hh===""||hh==="#"||hh==="#week")?'aria-current="page"':""}><div class="n">Week</div><div class="f">Today</div></a>`+DAYS.map(d=>`<a href="#${d.id}" ${day&&d.id===day.id?'aria-current="page"':""}><div class="n">${d.n.replace("Day ","D")}</div><div class="f">${d.f}</div></a>`).join("")+
-    `<a href="#diet" ${cur("#diet")}><div class="n">Diet</div><div class="f">Meals</div></a><a href="#stats" ${cur("#stats")}><div class="n">Stats</div><div class="f">Progress</div></a>`;
+  nav.innerHTML=`<a href="#week" ${(hh===""||hh==="#"||hh==="#week")?'aria-current="page"':""}><div class="n">Week</div><div class="f">Today</div></a><a href="#program" ${day?'aria-current="page"':""}><div class="n">Program</div><div class="f">Day 1–3</div></a><a href="#diet" ${cur("#diet")}><div class="n">Diet</div><div class="f">Meals</div></a><a href="#stats" ${cur("#stats")}><div class="n">Stats</div><div class="f">Progress</div></a>`;
   clearInterval(timerId);
   if(!day){ if(location.hash==="#diet") renderDiet(); else if(location.hash==="#stats") renderStats(); else renderWeek(); return; }
   if(inSession()){ renderSession(day); return; }
@@ -618,7 +624,8 @@ function render(){
   const td=(logs.sessions||[]).filter(x=>x.d===today() && x.day===day.id);
   const startBar = (td.length && !dr) ? `<div class="startbar donebar"><p>Completed today ✓ ${(td.reduce((a,x)=>a+(x.vol||0),0)).toLocaleString()} kg lifted${td.reduce((a,x)=>a+(x.min||0),0)?", "+td.reduce((a,x)=>a+(x.min||0),0)+" min":""}.</p><a class="start" href="#stats">View in calendar</a></div>` : `<div class="startbar"><p>${dr?"Workout in progress since "+new Date(dr.start).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+".":"Log every exercise as you go, then save it all at the end."}</p><a class="start" href="#log-${day.id}">${dr?"Resume workout":"Start today’s workout"}</a></div>`;
   const csvBar=`<div class="csvbar"><button class="export" data-csvtpl type="button">Download CSV template</button><button class="export" data-csvup type="button">Upload CSV</button><input type="file" id="csvFile" accept=".csv,text/csv" hidden></div>`;
-  main.innerHTML=startBar+csvBar+`<p class="daynote">${esc(day.note)}</p><div class="legend"><span class="tag new">${counts.new} new</span><span class="tag changed">${counts.changed} changed</span><span class="tag same">${counts.same} same as ToM</span>${counts.custom?`<span class="tag new" style="background:var(--ball);color:var(--ball-ink)">${counts.custom} yours</span>`:""}</div><p class="daynote">Tap <b>Edit</b> on any exercise to swap it or remove it, or add your own at the end of a block. Changes apply to this day only and save to your account.</p>`+
+  const sw=`<div class="seg progsw">${DAYS.map(d=>`<a href="#${d.id}" class="${d.id===day.id?"on":""}">${esc(d.n)} <span>${esc(d.f)}</span></a>`).join("")}</div>`;
+  main.innerHTML=sw+startBar+csvBar+`<p class="daynote">${esc(day.note)}</p><div class="legend"><span class="tag new">${counts.new} new</span><span class="tag changed">${counts.changed} changed</span><span class="tag same">${counts.same} same as ToM</span>${counts.custom?`<span class="tag new" style="background:var(--ball);color:var(--ball-ink)">${counts.custom} yours</span>`:""}</div><p class="daynote">Tap <b>Edit</b> on any exercise to swap it or remove it, or add your own at the end of a block. Changes apply to this day only and save to your account.</p>`+
     day.blocks.map((b,bi)=>`<section class="block"><div class="bhead"><h2>${esc(b.h)}</h2><span class="bn">${esc(b.bn)}</span></div>${b.items.map(itemHTML).join("")}<button class="addex" data-addex="${bi}">+ Add exercise to ${esc(b.h)}</button></section>`).join("")+
     ((ARCHIVE[day.id]||[]).filter(i=>i.removed).length?`<section class="block"><div class="bhead"><h2>Removed</h2><span class="bn">Tap restore to bring one back</span></div><div class="card"><ul class="rows">${ARCHIVE[day.id].filter(i=>i.removed).map(i=>`<li><span class="m">${esc(i.name)}</span><button class="export" style="margin:0;padding:4px 12px" data-restore="${esc(i.id)}">Restore</button></li>`).join("")}</ul></div></section>`:"");
 }
@@ -888,7 +895,7 @@ function renderStats(){
     <div class="hkey"><span><i style="background:var(--new)"></i>diet on plan</span><span><i style="background:var(--court)"></i>mostly</span><span><i style="background:var(--danger)"></i>off plan</span></div></div>
   ${statsSummary(all, selDate, y, mo)}
   <div class="card">${detail}</div>
-  <section class="block"><div class="bhead"><h2>Personal bests</h2><span class="bn">Most recent first</span></div><div class="card"><ul class="rows">${prHTML}</ul></div></section>
+  ${bestsHTML(prs)}
   ${downloads?'<button class="export" id="exportBtn">Download my log (CSV)</button>':""}`;
   const eb=document.getElementById("exportBtn");
   if(eb) eb.onclick=async()=>{
@@ -1244,6 +1251,45 @@ async function importCSV(text, pageDay, forceDate){
     if(i>=0) sess[i]={...sess[i],...rec}; else sess.push(rec); });
   logs.sessions=sess; try{ await store.save("sessions"); }catch(err){}
   render(); alert(`Imported ${found.length} exercise${found.length>1?"s":""}. They’re in your history, Stats and the Week tab.`);
+}
+function firstLogDate(){
+  let f=today(); const upd=d=>{ if(d && d<f) f=d; };
+  Object.entries(logs).forEach(([k,v])=>{ if(k.startsWith("diet-")) upd(k.slice(5)); else if(k.startsWith("week-")) upd(k.slice(5)); else if(Array.isArray(v)) v.forEach(e=>upd(e&&e.d)); });
+  const lim=parse(today()); lim.setDate(lim.getDate()-370); return f<iso(lim)?iso(lim):f;
+}
+function bestsHTML(prs){
+  const td=today(), first=firstLogDate(), days=[]; 
+  for(let x=parse(first); iso(x)<=td; x.setDate(x.getDate()+1)){ const k=iso(x); days.push({k, g:gymLogged(k).length>0, acts:activitiesOn(k), ds:dietSummary(k)}); }
+  // diet: consecutive on-plan days (today counts only once it is on plan)
+  let cur=0, best=0, run=0;
+  days.forEach(d=>{ if(d.ds&&d.ds.verdict==="On plan"){ run++; best=Math.max(best,run); } else run=0; });
+  for(let i=days.length-1;i>=0;i--){ const d=days[i]; if(d.ds&&d.ds.verdict==="On plan") cur++; else if(d.k===td) continue; else break; }
+  const dietS={cur,best};
+  // weekly targets
+  const weeks={}; days.forEach(d=>{ const w=iso(monday(parse(d.k))); const W=weeks[w] ||= {str:0,ten:0,run:0};
+    if(d.g) W.str++; d.acts.forEach(a=>{ if(a.k==="tennis") W.ten++; if(a.k==="run") W.run++; }); });
+  const wk=Object.keys(weeks).sort(), thisW=iso(monday(parse(td)));
+  const wStreak=(key,target)=>{ let b=0,r=0; wk.forEach(w=>{ if(weeks[w][key]>=target){ r++; b=Math.max(b,r); } else if(w!==thisW) r=0; });
+    let c=0; for(let i=wk.length-1;i>=0;i--){ const w=wk[i]; if(weeks[w][key]>=target) c++; else if(w===thisW) continue; else break; }
+    return {cur:c,best:b,thisWeek:(weeks[thisW]||{})[key]||0}; };
+  const S=wStreak("str",3), T=wStreak("ten",3), R=wStreak("run",3);
+  const tot={ten:0,run:0,str:0}; days.forEach(d=>{ if(d.g) tot.str++; d.acts.forEach(a=>{ if(a.k==="tennis") tot.ten++; if(a.k==="run") tot.run++; }); });
+  const card=(big,unit,label,sub)=>`<div class="kpi"><div class="big">${big}<small>${unit}</small></div><div class="lbl">${label}</div><div class="lbl" style="margin-top:2px">${sub}</div></div>`;
+  const streaks=`<div class="kpis k4 streaks">${card(dietS.cur," d","Diet on plan",`Best ${dietS.best} d`)}${card(S.cur," wk","Strength 3×/wk",`Best ${S.best} · now ${S.thisWeek}/3`)}${card(T.cur," wk","Tennis 3×/wk",`Best ${T.best} · now ${T.thisWeek}/3`)}${card(R.cur," wk","Runs 3×/wk",`Best ${R.best} · now ${R.thisWeek}/3`)}</div>
+    <p class="hkey" style="margin:6px 4px 0">Totals since ${esc(fmtDate(first))}: ${tot.str} strength day${tot.str===1?"":"s"}, ${tot.ten} tennis, ${tot.run} run${tot.run===1?"":"s"}. Week streaks count a week once it hits 3; this week only adds when it does.</p>`;
+  // lift bests: every logged exercise, best value, date, jump
+  const seen=new Set(), rows=[];
+  statDays().forEach(day=>day.blocks.forEach(b=>b.items.forEach(item=>{
+    if(!item.type||seen.has(item.id)) return; seen.add(item.id);
+    const es=(logs[item.id]||[]).slice().sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t); if(!es.length) return;
+    let best=null, bestE=null, prev=null; es.forEach(e=>{ const v=primary(item,e); if(v==null) return; if(best==null||v>best){ prev=best; best=v; bestE=e; } });
+    if(best==null) return; const u=primaryUnit(item,es);
+    rows.push({d:bestE.d, html:`<li><span class="d">${esc(fmtDate(bestE.d))}</span><span class="m">${esc(item.name)}${(parse(td)-parse(bestE.d))/864e5<=7?'<span class="prmark">New</span>':""}<br><span class="k">${esc(describe(item,bestE))}</span></span><span class="r">${prev!=null?`${prev} → `:""}<b>${best} ${esc(u)}</b></span></li>`});
+  })));
+  rows.sort((a,b)=>a.d<b.d?1:-1);
+  const lifts=rows.length?rows.map(r=>r.html).join(""):'<li><span class="m">Log a workout and your best for each exercise shows here.</span></li>';
+  return `<section class="block"><div class="bhead"><h2>Bests & streaks</h2><span class="bn">Current, with your best ever</span></div>${streaks}
+    <div class="card" style="margin-top:10px"><div class="calhead" style="margin-bottom:4px"><b style="font-size:18px">Lift bests</b><span class="k">${rows.length} exercise${rows.length===1?"":"s"}</span></div><ul class="rows">${lifts}</ul></div></section>`;
 }
 function findItem(id){ for(const d of DAYS) for(const b of d.blocks) for(const i of b.items) if(i.id===id) return i; for(const k in ARCHIVE) for(const i of ARCHIVE[k]) if(i.id===id) return i; }
 
