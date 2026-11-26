@@ -272,8 +272,15 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .wtab th:first-child{text-align:left;font-weight:600}
 .wtab thead th{font-size:12px;color:var(--muted);font-weight:600;vertical-align:bottom}
 .wtab .up{color:var(--new);font-weight:600}.wtab .down{color:var(--danger);font-weight:600}
-.tgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-@media (max-width:560px){.tgrid{grid-template-columns:1fr}}
+.tgrid{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+.tgrid::-webkit-scrollbar{display:none}
+.tgrid .tcard{flex:0 0 86%;max-width:360px;scroll-snap-align:start}
+.carhead{display:flex;align-items:center;justify-content:space-between}
+.carnav{display:flex;gap:6px}
+.carnav button{height:34px;min-width:34px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;font-size:18px;cursor:pointer}
+.cardots{display:flex;justify-content:center;gap:8px;margin-top:10px}
+.cardots button{width:8px;height:8px;border-radius:50%;border:0;padding:0;background:var(--line);cursor:pointer}
+.cardots button.on{background:var(--court);width:20px;border-radius:4px}
 .tcard{margin:0;background:var(--bg);border-radius:10px;padding:10px}
 .tcard figcaption{display:flex;align-items:baseline;gap:6px;font-size:14px}
 .tcard .tv{margin-left:auto;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:22px}
@@ -1112,9 +1119,9 @@ function trendSVG(pts, m){ // pts: [{d,v}] sorted by date, length >= 2
   const W=320,H=132,L=34,R=12,T=14,B=22, ts=pts.map(p=>parse(p.d).getTime()), t0=ts[0], t1=Math.max(ts[ts.length-1], t0+864e5);
   let vs=pts.map(p=>p.v); if(m.goal!=null) vs=vs.concat([m.goal]); let lo=Math.min(...vs), hi=Math.max(...vs); const pad=Math.max((hi-lo)*0.15, 0.5); lo-=pad; hi+=pad;
   const x=t=>L+(t-t0)/(t1-t0)*(W-L-R), y=v=>T+(hi-v)/(hi-lo)*(H-T-B), r1=v=>Math.round(v*10)/10;
-  const ticks=[lo+pad, (lo+hi)/2, hi-pad].map(r1);
+  const ticks=[...new Set([lo, (lo+hi)/2, hi].map(r1))];
   let g=ticks.map(v=>`<line class="tg" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text class="tl" x="${L-6}" y="${y(v)+3.5}" text-anchor="end">${v}</text>`).join("");
-  if(m.goal!=null) g+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${y(m.goal)}" y2="${y(m.goal)}"/><text class="gt" x="${W-R}" y="${y(m.goal)-4}" text-anchor="end">${esc(m.gl)}</text>`;
+  if(m.goal!=null) g+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${y(m.goal)}" y2="${y(m.goal)}"/><text class="gt" x="${L+4}" y="${y(m.goal)-4}" text-anchor="start">${esc(m.gl)}</text>`;
   const path=pts.map((p,i)=>(i?"L":"M")+x(ts[i]).toFixed(1)+" "+y(p.v).toFixed(1)).join(" ");
   const dots=pts.map((p,i)=>{ const cx=x(ts[i]), cy=y(p.v), last=i===pts.length-1; return `<g class="pt" tabindex="0"><circle class="hit" cx="${cx}" cy="${cy}" r="14"/><circle class="${last?"dl":"dt"}" cx="${cx}" cy="${cy}" r="${last?5:4}"/><title>${esc(fmtDate(p.d))}: ${p.v}${m.u?" "+m.u:""}</title></g>`; }).join("");
   const lab=`<text class="tl" x="${x(ts[0])}" y="${H-6}" text-anchor="start">${esc(fmtDate(pts[0].d))}</text><text class="tl" x="${x(ts[ts.length-1])}" y="${H-6}" text-anchor="end">${esc(fmtDate(pts[pts.length-1].d))}</text>`;
@@ -1135,8 +1142,14 @@ function weighProgress(w){
   return `<h3 class="wh">Progress since ${esc(fmtDate(START.d))}</h3>
     <div class="tablewrap"><table class="wtab"><thead><tr><th></th><th>Start → latest<br><span class="k">${esc(fmtDate(START.d))} → ${esc(fmtDate(latestD))}</span></th><th>Change</th><th>Goal</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="sum" style="margin-top:10px">${esc(weighAdvice(w))}</p>
-    <h3 class="wh">Trends</h3><div class="tgrid">${charts}</div>`;
+    <div class="carhead"><h3 class="wh">Trends</h3><span class="carnav"><button type="button" aria-label="Previous chart" onclick="carStep(this,-1)">‹</button><button type="button" aria-label="Next chart" onclick="carStep(this,1)">›</button></span></div>
+    <div class="tgrid" onscroll="carDots(this)">${charts}</div>
+    <div class="cardots">${Object.values(WMETA).map((m,i)=>`<button type="button" class="${i?"":"on"}" aria-label="Show ${esc(m.l)}" onclick="carGo(this,${i})"></button>`).join("")}</div>`;
 }
+function carIdx(c){ const w=c.children[0]?c.children[0].getBoundingClientRect().width+10:1; return Math.round(c.scrollLeft/w); }
+function carDots(c){ const i=carIdx(c), d=c.parentElement.querySelector(".cardots"); if(d) [...d.children].forEach((b,j)=>b.classList.toggle("on",j===i)); }
+function carGo(btn,i){ const c=btn.closest(".ritual").querySelector(".tgrid"), card=c.children[i]; if(card) c.scrollTo({left:card.offsetLeft-c.offsetLeft,behavior:"auto"}); carDots(c); }
+function carStep(btn,dir){ const c=btn.closest(".ritual").querySelector(".tgrid"), i=Math.max(0,Math.min(c.children.length-1,carIdx(c)+dir)); const card=c.children[i]; c.scrollTo({left:card.offsetLeft-c.offsetLeft,behavior:"auto"}); carDots(c); }
 function icsFile(){
   const now=new Date(), nx=new Date(now); nx.setDate(now.getDate()+((7-now.getDay())%7)); const ymd=iso(nx).replace(/-/g,"");
   const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
