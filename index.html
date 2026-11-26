@@ -934,7 +934,7 @@ document.getElementById("signoutBtn").onclick=async()=>{
 };
 window.addEventListener("online",()=>flush());
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") flush(); });
-if("serviceWorker" in navigator && location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
+if("serviceWorker" in navigator && location.protocol==="https:") navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(r=>r.update()).catch(()=>{});
 </script>
 </body>
 </html>
