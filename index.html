@@ -251,6 +251,14 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .progsw a span{display:block;font-family:Barlow,sans-serif;font-weight:500;font-size:12px;color:var(--muted)}
 .progsw a.on{background:var(--court);border-color:var(--court);color:#fff}
 .progsw a.on span{color:#fff;opacity:.85}
+.planbox{margin-top:10px}
+.planbox.locked{box-shadow:inset 0 0 0 2px var(--court)}
+.plantitle{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.plantitle b{font-family:"Barlow Condensed",sans-serif;font-size:24px;line-height:1.1}
+.planbox .sum{font-size:14px;color:var(--muted);margin:6px 0 0}
+.planbox .seg{margin-top:10px}
+.planbox .seg button{font-size:13px;padding:5px 10px}
+.planbox .csvbar{margin-top:12px}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -728,7 +736,7 @@ main.addEventListener("change", async e=>{
   if(e.target.matches("[data-wadd]")){ await weekAdd(e.target); return; }
   if(location.hash!=="#diet") return; const t=e.target;
   if(t.hasAttribute("data-ddate")){ dietDate=t.value||today(); renderDiet(); }
-  else if(t.hasAttribute("data-dnote")){ const d=dietDate||today(), r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.note=t.value.trim(); await saveDay(d,r); }
+  else if(t.hasAttribute("data-dnote")){ const d=dietDate||today(), r=dayRec(d)||{}; r.note=t.value.trim(); await saveDay(d,r); }
 });
 main.addEventListener("input", e=>{
   if(!inSession()) return;
@@ -1010,9 +1018,9 @@ const DIET = {
     {id:"lu",name:"Lunch",what:"Quinoa-jowar pasta 50 g dry (~115 g cooked) · chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:645,p:40,c:58,f:30},
     {id:"sn",name:"Snack, ~4 pm",what:"Mixed nuts + almonds 20 g",k:120,p:4,c:4,f:10},
     {id:"di",name:"Dinner, by 7 pm",what:"Chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 15 g",k:410,p:34,c:12,f:25}]},
-  serve:{label:"+ Serve",full:"Strength + serve hour",note:"Same as a strength day, with more lunch pasta so carbs land ~3 hours before you play.",meals:[
+  serve:{label:"+ Serve",full:"Strength day with a serve hour",note:"Serve hour: lunch pasta goes from 50 g to 75 g dry (~170 g cooked) so the carbs land about 3 hours before you play. Day ≈ 1,960 kcal.",meals:[
     {id:"bf",name:"Breakfast, post-gym",what:"Oats 70 g · soy milk 150 ml + water 150 ml · 1 scoop Cosmix · seeds 15 g + almonds 15 g · papaya 200 g",k:695,p:47,c:78,f:24},
-    {id:"lu",name:"Lunch",what:"Quinoa-jowar pasta 75 g dry (~170 g cooked) · chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:735,p:43,c:76,f:30},
+    {id:"lu",name:"Lunch, ~3 h before serves",what:"Quinoa-jowar pasta 75 g dry (~170 g cooked) · chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:735,p:43,c:76,f:30},
     {id:"sn",name:"Snack, ~4 pm",what:"Mixed nuts + almonds 20 g",k:120,p:4,c:4,f:10},
     {id:"di",name:"Dinner, by 7 pm",what:"Chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 15 g",k:410,p:34,c:12,f:25}]},
   tennis:{label:"Tennis",full:"Tennis day",note:"Breakfast is the post-training carb meal with the Cosmix scoop; dinner is carb-free.",meals:[
@@ -1020,7 +1028,7 @@ const DIET = {
     {id:"lu",name:"Lunch",what:"Quinoa-jowar pasta 70 g dry (~160 g cooked) · chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:720,p:42,c:76,f:30},
     {id:"sn",name:"Snack, ~4 pm",what:"Mixed nuts + almonds 30 g",k:180,p:5,c:5,f:15},
     {id:"di",name:"Dinner, by 7 pm",what:"Chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:460,p:33,c:12,f:29}]},
-  fast:{label:"Sunday fast",full:"Sunday fasting day",note:"18-hour fast (Saturday dinner by 7 pm → first meal 1 pm). Walking only, no gym or hard tennis while fasted. Match on Sunday? Eat the tennis plan and move the fast.",meals:[
+  fast:{label:"Rest day (fast)",full:"Rest day: 18-hour fast",note:"18-hour fast (Saturday dinner by 7 pm → first meal 1 pm). Walking only, no gym or hard tennis while fasted. Match on Sunday? Eat the tennis plan and move the fast.",meals:[
     {id:"fa",name:"Wake → 1 pm: fast",what:"1 L water with a pinch of salt by 10 am, keep sipping; black coffee or tea is fine. 25-min easy fasted walk",k:0,p:0,c:0,f:0},
     {id:"lu",name:"1 pm, break the fast",what:"Quinoa-jowar pasta 60 g dry (~140 g cooked) · chicken breast 120 g cooked · cheese 20 g · cooked veg 250 g · olive oil 20 g",k:750,p:53,c:66,f:31},
     {id:"sn",name:"~4 pm",what:"Mixed nuts + almonds 20 g",k:120,p:4,c:4,f:10},
@@ -1035,7 +1043,18 @@ const START={d:"2026-11-25",kg:71.5,bf:24.2,fm:17.3,lm:54.2,vf:11,t:1}, GOAL={kg
 let dietDate=null;
 const dkey=d=>"diet-"+d;
 function dayRec(d){ return ((logs[dkey(d)]||[])[0]) || null; }
-function defaultType(d){ if(gymLogged(d).length) return parse(d).getDay()===1||parse(d).getDay()===5?"serve":"strength"; return ["fast","serve","tennis","strength","tennis","serve","tennis"][parse(d).getDay()]; }
+function planKinds(d){ // everything on that day's Week card that isn't skipped: planned, added, logged
+  const m=iso(monday(parse(d))), di=(parse(d).getDay()+6)%7, ks=new Set(rowsFor(m,di,d).map(r=>r.k));
+  if(gymLogged(d).length) ks.add("gym"); return ks; }
+function autoType(d){ const ks=planKinds(d);
+  if(ks.has("tennis")) return "tennis";            // tennis day (also a Sunday match: skip the fast)
+  if(ks.has("gym")) return ks.has("serve")?"serve":"strength";
+  if(ks.has("serve")) return "serve";              // serve practice needs the carbs; no hard training while fasted
+  return "fast"; }                                 // nothing big on: rest day = the 18-hour fast
+function autoWhy(d){ const ks=[...planKinds(d)].filter(k=>["gym","tennis","serve"].includes(k)); const done=new Set([...gymLogged(d).length?["gym"]:[],...activitiesOn(d).map(a=>a.k)]);
+  return ks.length?ks.map(k=>({gym:"strength",tennis:"tennis",serve:"serve practice"}[k]+(done.has(k)?" (done)":" (planned)"))).join(" + "):"no strength or tennis on the Week tab"; }
+function dayPlanType(d){ const r=dayRec(d)||{}; if(r.locked && DIET[r.type]) return r.type; if(r.manual && DIET[r.manual]) return r.manual; return autoType(d); }
+const defaultType = dayPlanType;
 async function saveDay(d,rec){ rec.u=Date.now(); rec.d=d; logs[dkey(d)]=[rec]; try{ await store.save(dkey(d)); }catch(e){} }
 function weighIns(){ return [START, ...(logs.weighins||[])].sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t); }
 function fmt1(v){ return v==null?"–":(Math.round(v*10)/10).toString(); }
@@ -1069,14 +1088,14 @@ function icsFile(){
 }
 function renderDiet(){
   const td=today(); if(!dietDate) dietDate=td;
-  const d=dietDate, rec=dayRec(d)||{}, type=rec.type||defaultType(d), plan=DIET[type], meals=rec.meals||{}, hab=rec.habits||{};
+  const d=dietDate, rec=dayRec(d)||{}, type=dayPlanType(d), plan=DIET[type], meals=rec.meals||{}, hab=rec.habits||{};
   const habits=HABITS[type==="fast"?"fast":"base"];
   const eaten=plan.meals.filter(m=>meals[m.id]), tot=plan.meals.reduce((a,m)=>({k:a.k+m.k,p:a.p+m.p}),{k:0,p:0}), got=eaten.reduce((a,m)=>({k:a.k+m.k,p:a.p+m.p}),{k:0,p:0});
   const dn=parse(d).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"short"});
   const isSun=parse(d).getDay()===0;
   // week strip (Mon–Sun)
   const mon=monday(parse(d)); let strip="";
-  for(let i=0;i<7;i++){ const x=new Date(mon); x.setDate(mon.getDate()+i); const k=iso(x), r=dayRec(k), tp=r&&DIET[r.type||defaultType(k)], n=r?Object.values(r.meals||{}).filter(Boolean).length:0, of=tp?tp.meals.length:4;
+  for(let i=0;i<7;i++){ const x=new Date(mon); x.setDate(mon.getDate()+i); const k=iso(x), r=dayRec(k), tp=DIET[dayPlanType(k)], n=r?Object.values(r.meals||{}).filter(Boolean).length:0, of=tp?tp.meals.length:4;
     strip+=`<button data-dday="${k}" class="${k===d?"sel ":""}${k===td?"today ":""}${n?"has":""}" aria-label="${esc(fmtDate(k))}"><span>${["M","T","W","T","F","S","S"][i]}</span><b>${x.getDate()}</b><span class="vt">${n?n+"/"+of:""}</span></button>`; }
   const w=weighIns(), last=w[w.length-1], prev=w.length>1?w[w.length-2]:null, wkey="weighin";
   const lastSun=(()=>{ const x=parse(td); x.setDate(x.getDate()-x.getDay()); return iso(x); })();
@@ -1088,10 +1107,15 @@ function renderDiet(){
   main.innerHTML=`
   <div class="sesshead"><h2>Diet</h2><div class="datectl"><button data-dstep="-1" aria-label="Previous day">‹</button><input type="date" data-ddate aria-label="Date" value="${esc(d)}"><button data-dstep="1" aria-label="Next day">›</button></div>${d!==td?`<button class="discard" data-dtoday>Back to today</button>`:""}</div>
   <div class="card"><div class="week">${strip}</div></div>
-  <section class="block"><div class="bhead"><h2>${esc(dn)}</h2><span class="bn">Pick the day type</span></div>
-    <div class="seg">${Object.entries(DIET).map(([k,v])=>`<button data-dtype="${k}" class="${k===type?"on":""}">${esc(v.label)}</button>`).join("")}</div>
+  <section class="block"><div class="bhead"><h2>${esc(dn)}</h2><span class="bn">One diet plan per day</span></div>
+    <div class="card planbox ${rec.locked?"locked":""}">
+      <div class="plantitle"><span class="k">${rec.locked?"Submitted plan":rec.manual?"Your pick":"Auto plan"}</span><b>${esc(plan.full)}</b><span class="k">${tot.k.toLocaleString()} kcal · P ${tot.p} g</span></div>
+      <p class="sum">${rec.locked?(autoType(d)!==type?`This day now shows ${esc(autoWhy(d))}, which would suggest the ${esc(DIET[autoType(d)].full.toLowerCase())}. Your submitted plan stays; delete it to switch.`:"Locked for this day. Delete the day plan to change it."):rec.manual?"You picked this plan; it won’t change on its own. Tap Auto to let it follow your workouts.":`Picked from ${esc(autoWhy(d))}. It updates as you log workouts until you submit it.`}</p>
+      ${rec.locked?"":`<div class="seg"><button data-dtype="auto" class="${rec.manual?"":"on"}">Auto</button>${Object.entries(DIET).map(([k,v])=>`<button data-dtype="${k}" class="${rec.manual===k?"on":""}">${esc(v.label)}</button>`).join("")}</div>`}
+      <div class="csvbar">${rec.locked?"":`<button class="save" data-dsubmit type="button" style="margin:0">Submit plan for ${d===td?"today":esc(fmtDate(d))}</button>`}${(rec.locked||rec.manual||Object.values(meals).some(Boolean)||Object.values(hab).some(Boolean)||rec.note)?`<button class="export" data-dclear type="button" style="border-color:var(--line);color:var(--muted)">Delete this day’s plan</button>`:""}</div>
+    </div>
     <div class="kpis"><div class="kpi"><div class="big">${got.k.toLocaleString()}</div><div class="lbl">of ${tot.k.toLocaleString()} kcal</div></div><div class="kpi"><div class="big">${got.p}<span style="font-size:18px"> g</span></div><div class="lbl">of ${tot.p} g protein</div></div><div class="kpi"><div class="big">${eaten.length}/${plan.meals.length}</div><div class="lbl">Meals done</div></div></div>
-    <div class="csvbar">${eaten.length<plan.meals.length?`<button class="export" data-dall type="button">Mark all meals eaten</button>`:""}${(Object.values(meals).some(Boolean)||Object.values(hab).some(Boolean)||rec.note)?`<button class="export" data-dclear type="button" style="border-color:var(--line);color:var(--muted)">Clear this day</button>`:""}</div>
+    <div class="csvbar">${eaten.length<plan.meals.length?`<button class="export" data-dall type="button">Mark all meals eaten</button>`:""}</div>
     <p class="daynote">${esc(plan.full)}. ${esc(plan.note)}</p>
     ${plan.meals.map(m=>`<article class="ex ${meals[m.id]?"done":""}"><div class="code">${meals[m.id]?"✓":esc(m.id==="fa"?"F":m.name[0])}</div><h3 class="name">${esc(m.name)}</h3><div class="rx">${esc(m.what)}</div>${m.k?`<div class="stats"><span>${m.k} kcal</span><span class="k">P ${m.p} · C ${m.c} · F ${m.f} g</span></div>`:""}<button class="markdone ${meals[m.id]?"on":""}" data-meal="${m.id}">${meals[m.id]?(m.id==="fa"?"Fasted ✓ · Undo":"Eaten ✓ · Undo"):(m.id==="fa"?"Mark fast done":"Mark eaten")}</button></article>`).join("")}
   </section>
@@ -1121,11 +1145,12 @@ async function dietClick(e){
   const dd=t.closest("[data-dday]"); if(dd){ dietDate=dd.dataset.dday; renderDiet(); return true; }
   if(t.closest("[data-dtoday]")){ dietDate=today(); renderDiet(); return true; }
   const st=t.closest("[data-dstep]"); if(st){ const x=parse(d); x.setDate(x.getDate()+(+st.dataset.dstep)); dietDate=iso(x); renderDiet(); return true; }
-  const ty=t.closest("[data-dtype]"); if(ty){ const r=dayRec(d)||{}; r.type=ty.dataset.dtype; await saveDay(d,r); renderDiet(); return true; }
-  if(t.closest("[data-dall]")){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.meals=r.meals||{}; DIET[r.type].meals.forEach(m=>r.meals[m.id]=true); await saveDay(d,r); renderDiet(); return true; }
-  if(t.closest("[data-dclear]")){ if(!(await ask(`Clear ${fmtDate(d)}? This unticks all meals and daily rules and removes the diet note for that day.`,"Clear day","Keep"))) return true; logs[dkey(d)]=[]; try{ await store.save(dkey(d)); }catch(e){} renderDiet(); return true; }
-  const ml=t.closest("[data-meal]"); if(ml){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.meals=r.meals||{}; r.meals[ml.dataset.meal]=!r.meals[ml.dataset.meal]; await saveDay(d,r); renderDiet(); return true; }
-  const hb=t.closest("[data-habit]"); if(hb){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.habits=r.habits||{}; r.habits[hb.dataset.habit]=!r.habits[hb.dataset.habit]; await saveDay(d,r); renderDiet(); return true; }
+  const ty=t.closest("[data-dtype]"); if(ty){ const r=dayRec(d)||{}; if(r.locked) return true; if(ty.dataset.dtype==="auto") delete r.manual; else r.manual=ty.dataset.dtype; await saveDay(d,r); renderDiet(); return true; }
+  if(t.closest("[data-dsubmit]")){ const r=dayRec(d)||{}; r.type=dayPlanType(d); r.locked=true; await saveDay(d,r); renderDiet(); return true; }
+  if(t.closest("[data-dall]")){ const r=dayRec(d)||{}; r.meals=r.meals||{}; DIET[dayPlanType(d)].meals.forEach(m=>r.meals[m.id]=true); await saveDay(d,r); renderDiet(); return true; }
+  if(t.closest("[data-dclear]")){ if(!(await ask(`Delete the diet plan for ${fmtDate(d)}? This unlocks the plan, unticks all meals and daily rules and removes the note. The day goes back to auto.`,"Delete day plan","Keep"))) return true; logs[dkey(d)]=[]; try{ await store.save(dkey(d)); }catch(e){} renderDiet(); return true; }
+  const ml=t.closest("[data-meal]"); if(ml){ const r=dayRec(d)||{}; r.meals=r.meals||{}; r.meals[ml.dataset.meal]=!r.meals[ml.dataset.meal]; await saveDay(d,r); renderDiet(); return true; }
+  const hb=t.closest("[data-habit]"); if(hb){ const r=dayRec(d)||{}; r.habits=r.habits||{}; r.habits[hb.dataset.habit]=!r.habits[hb.dataset.habit]; await saveDay(d,r); renderDiet(); return true; }
   const wd=t.closest("[data-wdel]"); if(wd){ if(!(await ask("Delete this weigh-in?","Delete"))) return true; logs.weighins=(logs.weighins||[]).filter(x=>x.t!==+wd.dataset.wdel); await store.save("weighins"); renderDiet(); return true; }
   if(t.closest("[data-ics]")){ await downloads.save({filename:"sunday-weigh-in.ics", data:icsFile(), type:"text/calendar"}); return true; }
   return false;
@@ -1133,7 +1158,7 @@ async function dietClick(e){
 function activitiesOn(dIso){ const m=iso(monday(parse(dIso))), di=(parse(dIso).getDay()+6)%7; return rowsFor(m,di,dIso).filter(x=>x.done && x.k!=="gym"); }
 function dietSummary(d){
   const r=dayRec(d); if(!r || (!Object.values(r.meals||{}).some(Boolean) && !Object.values(r.habits||{}).some(Boolean))) return null;
-  const type=r.type||defaultType(d), pl=DIET[type], meals=r.meals||{}, hab=r.habits||{}, hs=HABITS[type==="fast"?"fast":"base"];
+  const type=dayPlanType(d), pl=DIET[type], meals=r.meals||{}, hab=r.habits||{}, hs=HABITS[type==="fast"?"fast":"base"];
   const eaten=pl.meals.filter(m=>meals[m.id]), tk=pl.meals.reduce((a,m)=>a+m.k,0), tp=pl.meals.reduce((a,m)=>a+m.p,0);
   const k=eaten.reduce((a,m)=>a+m.k,0), pr=eaten.reduce((a,m)=>a+m.p,0), md=eaten.length, mt=pl.meals.length, rd=hs.filter(([h])=>hab[h]).length, rt=hs.length;
   const score=(md/mt+rd/rt)/2, verdict=score>=0.9?"On plan":score>=0.6?"Mostly":"Off plan";
