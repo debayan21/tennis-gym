@@ -183,7 +183,7 @@ section.block{margin-top:18px}
 .seg button{border:2px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-weight:600;font-size:14px;cursor:pointer}
 .seg button.on{background:var(--court);border-color:var(--court);color:#fff}
 .ritual .sum{font-size:14px;color:var(--ink);margin:0 0 10px}
-.wday{margin-top:10px}
+.wday{margin-top:10px;scroll-margin-top:calc(env(safe-area-inset-top,0px) + 140px)}
 .wday.istoday{box-shadow:inset 0 0 0 2px var(--ball)}
 .wrow{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .wrow .wtxt{flex:1;min-width:0}
@@ -191,6 +191,8 @@ section.block{margin-top:18px}
 .tick{flex:none;width:34px;height:34px;border-radius:50%;border:2px solid var(--court);background:transparent;color:var(--ball-ink);font-weight:700;cursor:pointer;font-size:16px}
 .tick.on{background:var(--ball);border-color:var(--ball)}
 .wrow .tag{margin-top:0;flex:none}
+.wadd{border-top:1px solid var(--line);padding-top:8px}
+.wadd select{font:inherit;font-size:15px;color:var(--court);font-weight:600;background:transparent;border:1px dashed var(--line);border-radius:8px;padding:6px 10px;width:100%}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -583,6 +585,7 @@ main.addEventListener("click", e=>{
   updateCounts(day,dr);
 });
 main.addEventListener("change", async e=>{
+  if(e.target.matches("[data-wadd]")){ await weekAdd(e.target); return; }
   if(location.hash!=="#diet") return; const t=e.target;
   if(t.hasAttribute("data-ddate")){ dietDate=t.value||today(); renderDiet(); }
   else if(t.hasAttribute("data-dnote")){ const d=dietDate||today(), r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.note=t.value.trim(); await saveDay(d,r); }
@@ -768,52 +771,79 @@ function renderStats(){
 }
 
 /* ---------- weekly schedule ---------- */
-const WEEK = [ // index 0 = Monday
-  {items:[{id:"gym",k:"gym",name:"Gym Day 1",when:"AM",day:"day1"},{id:"serve",k:"serve",name:"Serve practice",when:"PM"}]},
+const FOCUS={day1:"Lower body · squat focus",day2:"Upper body · bench focus",day3:"Full body · deadlift focus"};
+const ACTS={ // what can be logged on any date
+  str1:{k:"gym",name:"Strength: lower body (squat)",day:"day1"},
+  str2:{k:"gym",name:"Strength: upper body (bench)",day:"day2"},
+  str3:{k:"gym",name:"Strength: full body (deadlift)",day:"day3"},
+  serve:{k:"serve",name:"Serve practice"},
+  ladder:{k:"ladder",name:"Ladder / reactive drills"},
+  tennis:{k:"tennis",name:"Tennis"},
+  run:{k:"run",name:"Run"},
+  intervals:{k:"run",name:"Intervals"},
+  rest:{k:"rest",name:"Rest day"}
+};
+const WEEK = [ // planned schedule, index 0 = Monday
+  {items:[{id:"gym",k:"gym",name:"Strength",when:"AM",plan:"day1"},{id:"serve",k:"serve",name:"Serve practice",when:"PM"}]},
   {items:[{id:"ladder",k:"ladder",name:"Ladder / reactive drills"},{id:"tennis",k:"tennis",name:"Tennis"},{id:"run",k:"run",name:"Runna long run"}]},
-  {items:[{id:"gym",k:"gym",name:"Gym Day 2 + intervals",when:"AM",day:"day2"},{id:"run",k:"run",name:"Easy run"},{id:"serve",k:"serve",name:"Light serves"}]},
-  {note:"No run: keep legs fresh for Day 3.",items:[{id:"tennis",k:"tennis",name:"Tennis"}]},
-  {items:[{id:"gym",k:"gym",name:"Gym Day 3",when:"AM",day:"day3"},{id:"serve",k:"serve",name:"Serve practice",when:"PM"}]},
+  {items:[{id:"gym",k:"gym",name:"Strength + intervals",when:"AM",plan:"day2"},{id:"run",k:"run",name:"Easy run"},{id:"serve",k:"serve",name:"Light serves"}]},
+  {note:"No run: keep legs fresh for the next strength day.",items:[{id:"tennis",k:"tennis",name:"Tennis"}]},
+  {items:[{id:"gym",k:"gym",name:"Strength",when:"AM",plan:"day3"},{id:"serve",k:"serve",name:"Serve practice",when:"PM"}]},
   {items:[{id:"ladder",k:"ladder",name:"Ladder / reactive drills"},{id:"tennis",k:"tennis",name:"Tennis"},{id:"run",k:"run",name:"Easy run"}]},
   {items:[{id:"rest",k:"rest",name:"Rest day",sub:"Walking only, no gym or hard tennis"},{id:"weigh",k:"weigh",name:"Sunday weigh-in",sub:"Fasted, before breakfast",link:"#diet"}]}
 ];
-const KIND={gym:["Gym","changed"],serve:["Serve","new"],ladder:["Drills","new"],tennis:["Tennis","new"],run:["Run","new"],rest:["Rest","same"],weigh:["Weigh-in","same"]};
+const KIND={gym:["Strength","changed"],serve:["Serve","new"],ladder:["Drills","new"],tennis:["Tennis","new"],run:["Run","new"],rest:["Rest","same"],weigh:["Weigh-in","same"]};
 let weekStart=null;
 const wkey=m=>"week-"+m;
-function weekRec(m){ return ((logs[wkey(m)]||[])[0])||{done:{}}; }
-function autoDone(dateIso,it){
-  if(it.k==="gym"){ const m0=iso(monday(parse(dateIso))), m1=(()=>{ const x=parse(m0); x.setDate(x.getDate()+6); return iso(x); })(), inWk=d=>d>=m0&&d<=m1;
-    if((logs.sessions||[]).some(x=>inWk(x.d) && x.day===it.day)) return true;
-    const d=DAYS.find(x=>x.id===it.day); return !!d && d.blocks.some(b=>b.items.some(i=>i.type && !i.id.startsWith("wu-") && (logs[i.id]||[]).some(e=>inWk(e.d)))); }
-  if(it.k==="weigh") return (logs.weighins||[]).some(x=>x.d===dateIso);
-  return false;
+function weekRec(m){ const r=((logs[wkey(m)]||[])[0])||{}; r.done=r.done||{}; r.extra=r.extra||{}; return r; }
+function gymLogged(dateIso){ // which strength workouts were logged on this exact date
+  const ids=new Set((logs.sessions||[]).filter(x=>x.d===dateIso).map(x=>x.day));
+  DAYS.forEach(d=>{ if(d.blocks.some(b=>b.items.some(i=>i.type && !i.id.startsWith("wu-") && (logs[i.id]||[]).some(e=>e.d===dateIso)))) ids.add(d.id); });
+  return [...ids];
 }
-function isWDone(m,di,it,dateIso){ const r=weekRec(m); return !!(r.done||{})[di+"-"+it.id] || autoDone(dateIso,it); }
+function rowsFor(m,di,dateIso){
+  const r=weekRec(m), g=gymLogged(dateIso), rows=[];
+  WEEK[di].items.forEach(it=>{
+    let name=it.name, auto=false, sub=it.sub||"";
+    if(it.k==="gym"){ if(g.length){ auto=true; name="Strength: "+g.map(x=>FOCUS[x]).join(" + "); } else sub="Plan: "+FOCUS[it.plan]; }
+    if(it.k==="weigh") auto=(logs.weighins||[]).some(x=>x.d===dateIso);
+    rows.push({key:di+"-"+it.id, k:it.k, name, when:it.when, sub, link:it.link, open:it.k==="gym"?(g[0]||it.plan):null, auto, done:auto||!!r.done[di+"-"+it.id]});
+  });
+  // strength logged on a day with no planned strength slot
+  if(g.length && !WEEK[di].items.some(it=>it.k==="gym")) rows.unshift({key:di+"-gymlog", k:"gym", name:"Strength: "+g.map(x=>FOCUS[x]).join(" + "), sub:"Logged in the app", open:g[0], auto:true, done:true, extra:true});
+  (r.extra[di]||[]).forEach((a,ix)=>{ const A=ACTS[a]; if(!A) return; if(A.k==="gym" && g.includes(A.day)) return; rows.push({key:di+"-x"+ix, k:A.k, name:A.name, open:A.day||null, done:!!r.done[di+"-x"+ix], extra:true, rm:ix}); });
+  return rows;
+}
 function renderWeek(){
   const td=today(); if(!weekStart) weekStart=iso(monday(parse(td)));
-  const m=weekStart, mon=parse(m); let tot=0, dn=0;
+  const m=weekStart, mon=parse(m); let tot=0, dn=0, runs=0, str=0;
   const cards=WEEK.map((w,di)=>{
-    const dt=new Date(mon); dt.setDate(mon.getDate()+di); const k=iso(dt), isT=k===td;
-    const rows=w.items.map(it=>{ tot++; const done=isWDone(m,di,it,k); if(done) dn++; const auto=autoDone(k,it);
-      const [lab,cls]=KIND[it.k];
-      const go = it.day ? `<a class="mini" href="#${it.day}">Open workout</a>` : it.link ? `<a class="mini" href="${it.link}">Open</a>` : "";
-      return `<div class="wrow ${done?"done":""}"><button class="tick ${done?"on":""}" data-wk="${di}-${it.id}" ${auto?'data-auto="1"':""} aria-pressed="${done}" aria-label="Mark ${esc(it.name)} complete">${done?"✓":""}</button><div class="wtxt"><div class="name" style="font-size:16px">${esc(it.name)}${it.when?` <span class="k">(${it.when})</span>`:""}${go}</div>${it.sub?`<div class="rx">${esc(it.sub)}</div>`:""}${auto?`<div class="rx">Logged in the app ✓</div>`:""}</div><span class="tag ${cls}">${lab}</span></div>`; }).join("");
-    const dd=w.items.filter(it=>isWDone(m,di,it,k)).length;
-    return `<article class="card wday ${isT?"istoday":""}" id="wd-${di}"><div class="calhead"><b>${dt.toLocaleDateString(undefined,{weekday:"long"})} <span class="k" style="font-family:Barlow,sans-serif;font-size:14px;font-weight:500">${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}${isT?" · today":""}</span></b><span class="k">${dd}/${w.items.length}</span></div>${w.note?`<p class="sum" style="margin:0 0 6px;color:var(--muted);font-size:14px">${esc(w.note)}</p>`:""}${rows}</article>`;
+    const dt=new Date(mon); dt.setDate(mon.getDate()+di); const k=iso(dt), isT=k===td, rows=rowsFor(m,di,k);
+    tot+=rows.length; dn+=rows.filter(x=>x.done).length; runs+=rows.filter(x=>x.k==="run"&&x.done).length; str+=rows.filter(x=>x.k==="gym"&&x.done).length;
+    const html=rows.map(x=>{ const [lab,cls]=KIND[x.k];
+      const go = x.open ? `<a class="mini" href="#${x.open}">${x.auto?"View":"Open workout"}</a>` : x.link ? `<a class="mini" href="${x.link}">Open</a>` : "";
+      return `<div class="wrow ${x.done?"done":""}"><button class="tick ${x.done?"on":""}" data-wk="${x.key}" ${x.auto?'data-auto="1"':""} aria-pressed="${x.done}" aria-label="Mark ${esc(x.name)} complete">${x.done?"✓":""}</button><div class="wtxt"><div class="name" style="font-size:16px">${esc(x.name)}${x.when?` <span class="k">(${x.when})</span>`:""}${go}</div>${x.sub?`<div class="rx">${esc(x.sub)}</div>`:""}${x.auto&&x.k!=="weigh"&&!x.sub?`<div class="rx">Logged in the app ✓</div>`:""}</div><span class="tag ${cls}">${lab}</span>${x.rm!=null?`<button class="del" data-wrm="${di}-${x.rm}" aria-label="Remove">✕</button>`:""}</div>`; }).join("");
+    const add=`<div class="wadd"><select data-wadd="${di}" aria-label="Add an activity to ${esc(dt.toLocaleDateString(undefined,{weekday:"long"}))}"><option value="">+ Add what you did</option>${Object.entries(ACTS).map(([id,A])=>`<option value="${id}">${esc(A.name)}</option>`).join("")}</select></div>`;
+    return `<article class="card wday ${isT?"istoday":""}"><div class="calhead"><b>${dt.toLocaleDateString(undefined,{weekday:"long"})} <span class="k" style="font-family:Barlow,sans-serif;font-size:14px;font-weight:500">${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}${isT?" · today":""}</span></b><span class="k">${rows.filter(x=>x.done).length}/${rows.length}</span></div>${w.note?`<p class="sum" style="margin:0 0 6px;color:var(--muted);font-size:14px">${esc(w.note)}</p>`:""}${html}${add}</article>`;
   }).join("");
   const end=new Date(mon); end.setDate(mon.getDate()+6);
-  const pct=tot?Math.round(dn/tot*100):0;
   main.innerHTML=`<div class="sesshead"><h2>This week</h2><div class="calhead" style="gap:8px;margin:0"><button data-wnav="-1" aria-label="Previous week">‹</button><b style="font-size:16px">${esc(fmtDate(m))} – ${esc(fmtDate(iso(end)))}</b><button data-wnav="1" aria-label="Next week">›</button></div></div>
-  <div class="kpis"><div class="kpi"><div class="big">${dn}<span style="font-size:18px">/${tot}</span></div><div class="lbl">Done this week</div></div><div class="kpi"><div class="big">${pct}%</div><div class="lbl">Complete</div></div><div class="kpi"><div class="big">${WEEK.slice(0,6).reduce((a,w,di)=>{ const dt=new Date(mon); dt.setDate(mon.getDate()+di); return a+(w.items.some(it=>it.k==="run"&&isWDone(m,di,it,iso(dt)))?1:0); },0)}</div><div class="lbl">Runs done</div></div></div>
-  <p class="daynote">Tap the circle to mark something done. Gym days tick themselves when you log that workout any day this week; the weigh-in ticks when you log it.</p>${cards}`;
+  <div class="kpis"><div class="kpi"><div class="big">${dn}<span style="font-size:18px">/${tot}</span></div><div class="lbl">Done this week</div></div><div class="kpi"><div class="big">${str}<span style="font-size:18px">/3</span></div><div class="lbl">Strength days</div></div><div class="kpi"><div class="big">${runs}</div><div class="lbl">Runs done</div></div></div>
+  <p class="daynote">Each day shows the plan. Tap a circle to mark it done, or add what you actually did. Strength days are filled in from the workout you log that date, labelled by focus.</p>${cards}`;
   if(m===iso(monday(parse(td)))){ const t=document.querySelector(".istoday"); if(t && !renderWeek.scrolled){ renderWeek.scrolled=true; setTimeout(()=>t.scrollIntoView({block:"start"}),50); } }
 }
+async function saveWeek(m,r){ r.u=Date.now(); logs[wkey(m)]=[r]; try{ await store.save(wkey(m)); }catch(err){} renderWeek(); }
 async function weekClick(e){
   const nv=e.target.closest("[data-wnav]"); if(nv){ const d=parse(weekStart); d.setDate(d.getDate()+7*(+nv.dataset.wnav)); weekStart=iso(d); renderWeek(); return; }
-  const tk=e.target.closest("[data-wk]"); if(!tk) return;
-  if(tk.dataset.auto){ return; }
-  const m=weekStart, r=weekRec(m); r.done=r.done||{}; r.done[tk.dataset.wk]=!r.done[tk.dataset.wk]; r.u=Date.now();
-  logs[wkey(m)]=[r]; try{ await store.save(wkey(m)); }catch(err){} renderWeek();
+  const rm=e.target.closest("[data-wrm]"); if(rm){ const [di,ix]=rm.dataset.wrm.split("-").map(Number), r=weekRec(weekStart); (r.extra[di]||[]).splice(ix,1);
+    const nd={}; Object.entries(r.done).forEach(([k,v])=>{ const mm=/^(\d+)-x(\d+)$/.exec(k); if(!mm||+mm[1]!==di) nd[k]=v; else if(+mm[2]<ix) nd[k]=v; else if(+mm[2]>ix) nd[mm[1]+"-x"+(+mm[2]-1)]=v; }); r.done=nd; await saveWeek(weekStart,r); return; }
+  const tk=e.target.closest("[data-wk]"); if(!tk || tk.dataset.auto) return;
+  const r=weekRec(weekStart); r.done[tk.dataset.wk]=!r.done[tk.dataset.wk]; await saveWeek(weekStart,r);
+}
+async function weekAdd(sel){
+  const v=sel.value; if(!v) return; const di=+sel.dataset.wadd, r=weekRec(weekStart);
+  if(ACTS[v].k==="gym"){ const dt=parse(weekStart); dt.setDate(dt.getDate()+di); sel.value=""; if(await ask(`Log the ${ACTS[v].name.replace("Strength: ","")} workout for ${fmtDate(iso(dt))} now? You’ll enter your sets, and the day fills in automatically.`,"Open workout","Just tick it")){ location.hash="#log-"+ACTS[v].day; setTimeout(()=>{ const de=document.querySelector("[data-sd]"); if(de){ de.value=iso(dt); de.dispatchEvent(new Event("input",{bubbles:true})); } },50); return; } }
+  (r.extra[di] ||= []).push(v); r.done[di+"-x"+(r.extra[di].length-1)]=true; await saveWeek(weekStart,r);
 }
 
 /* ---------- diet ---------- */
@@ -848,7 +878,7 @@ const START={d:"2026-11-25",kg:71.5,bf:24.2,fm:17.3,lm:54.2,vf:11,t:1}, GOAL={kg
 let dietDate=null;
 const dkey=d=>"diet-"+d;
 function dayRec(d){ return ((logs[dkey(d)]||[])[0]) || null; }
-function defaultType(d){ return ["fast","serve","tennis","strength","tennis","serve","tennis"][parse(d).getDay()]; }
+function defaultType(d){ if(gymLogged(d).length) return parse(d).getDay()===1||parse(d).getDay()===5?"serve":"strength"; return ["fast","serve","tennis","strength","tennis","serve","tennis"][parse(d).getDay()]; }
 async function saveDay(d,rec){ rec.u=Date.now(); rec.d=d; logs[dkey(d)]=[rec]; try{ await store.save(dkey(d)); }catch(e){} }
 function weighIns(){ return [START, ...(logs.weighins||[])].sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t); }
 function fmt1(v){ return v==null?"–":(Math.round(v*10)/10).toString(); }
