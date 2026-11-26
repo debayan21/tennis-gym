@@ -47,10 +47,11 @@ button{font:inherit;color:inherit}
 header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--court);color:#fff;padding:14px 16px 0}
 .title{font-family:"Barlow Condensed",Arial Narrow,sans-serif;font-weight:700;font-size:26px;line-height:1;letter-spacing:.01em;margin:0}
 .sub{font-size:13px;opacity:.85;margin:4px 0 12px}
-nav.days{display:grid;grid-template-columns:repeat(5,1fr);gap:0;max-width:720px}
+nav.days{display:grid;grid-template-columns:repeat(6,1fr);gap:0;max-width:720px}
 nav.days a{display:block;text-decoration:none;padding:8px 6px 10px;border-bottom:4px solid transparent;text-align:left}
-nav.days a .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:22px;line-height:1}
-nav.days a .f{font-size:13px;opacity:.8}
+nav.days a .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:20px;line-height:1;white-space:nowrap}
+nav.days a .f{font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav.days a{min-width:0}
 nav.days a[aria-current="page"]{border-bottom-color:var(--ball)}
 nav.days a[aria-current="page"] .f{opacity:1}
 
@@ -182,6 +183,14 @@ section.block{margin-top:18px}
 .seg button{border:2px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-weight:600;font-size:14px;cursor:pointer}
 .seg button.on{background:var(--court);border-color:var(--court);color:#fff}
 .ritual .sum{font-size:14px;color:var(--ink);margin:0 0 10px}
+.wday{margin-top:10px}
+.wday.istoday{box-shadow:inset 0 0 0 2px var(--ball)}
+.wrow{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.wrow .wtxt{flex:1;min-width:0}
+.wrow.done .name{color:var(--muted)}
+.tick{flex:none;width:34px;height:34px;border-radius:50%;border:2px solid var(--court);background:transparent;color:var(--ball-ink);font-weight:700;cursor:pointer;font-size:16px}
+.tick.on{background:var(--ball);border-color:var(--ball)}
+.wrow .tag{margin-top:0;flex:none}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -379,7 +388,7 @@ async function flush(){
 }
 function cloudStore(){ return { kind:"cloud", async save(id){ cacheLocal(); const p=pend.get(); (id?[id]:Object.keys(logs)).forEach(k=>p.add(k)); pend.set(p); await flush(); } }; }
 function mergeDoc(k,a,b){
-  if(k.startsWith("draft-")||k.startsWith("diet-")){ const x=a[0], y=b[0]; if(!x) return b; if(!y) return a; return (x.u||0)>=(y.u||0)?a:b; }
+  if(k.startsWith("draft-")||k.startsWith("diet-")||k.startsWith("week-")){ const x=a[0], y=b[0]; if(!x) return b; if(!y) return a; return (x.u||0)>=(y.u||0)?a:b; }
   const m=new Map(); [...a,...b].forEach(e=>m.set(e.t,e)); return [...m.values()];
 }
 async function loadCloud(){
@@ -439,7 +448,7 @@ async function initStore(){
 /* ---------- render ---------- */
 const nav=document.getElementById("nav"), main=document.getElementById("main");
 const open = new Set();
-function currentDay(){ const h=location.hash.slice(1); if(h==="stats"||h==="diet") return null; return DAYS.find(d=>d.id===h || "log-"+d.id===h) || DAYS[0]; }
+function currentDay(){ const h=location.hash.slice(1); if(h===""||h==="week"||h==="stats"||h==="diet") return null; return DAYS.find(d=>d.id===h || "log-"+d.id===h) || DAYS[0]; }
 const inSession = () => location.hash.slice(1).startsWith("log-");
 
 function videoLinks(item){
@@ -478,10 +487,11 @@ function itemHTML(item){
 }
 function render(){
   const day=currentDay();
-  nav.innerHTML=DAYS.map(d=>`<a href="#${d.id}" ${day&&d.id===day.id?'aria-current="page"':""}><div class="n">${d.n}</div><div class="f">${d.f}</div></a>`).join("")+
-    `<a href="#diet" ${location.hash==="#diet"?'aria-current="page"':""}><div class="n">Diet</div><div class="f">Meals</div></a><a href="#stats" ${!day&&location.hash!=="#diet"?'aria-current="page"':""}><div class="n">Stats</div><div class="f">Progress</div></a>`;
+  const hh=location.hash, cur=k=>hh===k?'aria-current="page"':"";
+  nav.innerHTML=`<a href="#week" ${(hh===""||hh==="#"||hh==="#week")?'aria-current="page"':""}><div class="n">Week</div><div class="f">Today</div></a>`+DAYS.map(d=>`<a href="#${d.id}" ${day&&d.id===day.id?'aria-current="page"':""}><div class="n">${d.n.replace("Day ","D")}</div><div class="f">${d.f}</div></a>`).join("")+
+    `<a href="#diet" ${cur("#diet")}><div class="n">Diet</div><div class="f">Meals</div></a><a href="#stats" ${cur("#stats")}><div class="n">Stats</div><div class="f">Progress</div></a>`;
   clearInterval(timerId);
-  if(!day){ if(location.hash==="#diet") renderDiet(); else renderStats(); return; }
+  if(!day){ if(location.hash==="#diet") renderDiet(); else if(location.hash==="#stats") renderStats(); else renderWeek(); return; }
   if(inSession()){ renderSession(day); return; }
   const counts={new:0,changed:0,same:0};
   day.blocks.forEach(b=>b.items.forEach(i=>counts[i.st]++));
@@ -757,6 +767,55 @@ function renderStats(){
   };
 }
 
+/* ---------- weekly schedule ---------- */
+const WEEK = [ // index 0 = Monday
+  {items:[{id:"gym",k:"gym",name:"Gym Day 1",when:"AM",day:"day1"},{id:"serve",k:"serve",name:"Serve practice",when:"PM"}]},
+  {items:[{id:"ladder",k:"ladder",name:"Ladder / reactive drills"},{id:"tennis",k:"tennis",name:"Tennis"},{id:"run",k:"run",name:"Runna long run"}]},
+  {items:[{id:"gym",k:"gym",name:"Gym Day 2 + intervals",when:"AM",day:"day2"},{id:"run",k:"run",name:"Easy run"},{id:"serve",k:"serve",name:"Light serves"}]},
+  {note:"No run: keep legs fresh for Day 3.",items:[{id:"tennis",k:"tennis",name:"Tennis"}]},
+  {items:[{id:"gym",k:"gym",name:"Gym Day 3",when:"AM",day:"day3"},{id:"serve",k:"serve",name:"Serve practice",when:"PM"}]},
+  {items:[{id:"ladder",k:"ladder",name:"Ladder / reactive drills"},{id:"tennis",k:"tennis",name:"Tennis"},{id:"run",k:"run",name:"Easy run"}]},
+  {items:[{id:"rest",k:"rest",name:"Rest day",sub:"Walking only, no gym or hard tennis"},{id:"weigh",k:"weigh",name:"Sunday weigh-in",sub:"Fasted, before breakfast",link:"#diet"}]}
+];
+const KIND={gym:["Gym","changed"],serve:["Serve","new"],ladder:["Drills","new"],tennis:["Tennis","new"],run:["Run","new"],rest:["Rest","same"],weigh:["Weigh-in","same"]};
+let weekStart=null;
+const wkey=m=>"week-"+m;
+function weekRec(m){ return ((logs[wkey(m)]||[])[0])||{done:{}}; }
+function autoDone(dateIso,it){
+  if(it.k==="gym"){ const m0=iso(monday(parse(dateIso))), m1=(()=>{ const x=parse(m0); x.setDate(x.getDate()+6); return iso(x); })(), inWk=d=>d>=m0&&d<=m1;
+    if((logs.sessions||[]).some(x=>inWk(x.d) && x.day===it.day)) return true;
+    const d=DAYS.find(x=>x.id===it.day); return !!d && d.blocks.some(b=>b.items.some(i=>i.type && !i.id.startsWith("wu-") && (logs[i.id]||[]).some(e=>inWk(e.d)))); }
+  if(it.k==="weigh") return (logs.weighins||[]).some(x=>x.d===dateIso);
+  return false;
+}
+function isWDone(m,di,it,dateIso){ const r=weekRec(m); return !!(r.done||{})[di+"-"+it.id] || autoDone(dateIso,it); }
+function renderWeek(){
+  const td=today(); if(!weekStart) weekStart=iso(monday(parse(td)));
+  const m=weekStart, mon=parse(m); let tot=0, dn=0;
+  const cards=WEEK.map((w,di)=>{
+    const dt=new Date(mon); dt.setDate(mon.getDate()+di); const k=iso(dt), isT=k===td;
+    const rows=w.items.map(it=>{ tot++; const done=isWDone(m,di,it,k); if(done) dn++; const auto=autoDone(k,it);
+      const [lab,cls]=KIND[it.k];
+      const go = it.day ? `<a class="mini" href="#${it.day}">Open workout</a>` : it.link ? `<a class="mini" href="${it.link}">Open</a>` : "";
+      return `<div class="wrow ${done?"done":""}"><button class="tick ${done?"on":""}" data-wk="${di}-${it.id}" ${auto?'data-auto="1"':""} aria-pressed="${done}" aria-label="Mark ${esc(it.name)} complete">${done?"✓":""}</button><div class="wtxt"><div class="name" style="font-size:16px">${esc(it.name)}${it.when?` <span class="k">(${it.when})</span>`:""}${go}</div>${it.sub?`<div class="rx">${esc(it.sub)}</div>`:""}${auto?`<div class="rx">Logged in the app ✓</div>`:""}</div><span class="tag ${cls}">${lab}</span></div>`; }).join("");
+    const dd=w.items.filter(it=>isWDone(m,di,it,k)).length;
+    return `<article class="card wday ${isT?"istoday":""}" id="wd-${di}"><div class="calhead"><b>${dt.toLocaleDateString(undefined,{weekday:"long"})} <span class="k" style="font-family:Barlow,sans-serif;font-size:14px;font-weight:500">${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}${isT?" · today":""}</span></b><span class="k">${dd}/${w.items.length}</span></div>${w.note?`<p class="sum" style="margin:0 0 6px;color:var(--muted);font-size:14px">${esc(w.note)}</p>`:""}${rows}</article>`;
+  }).join("");
+  const end=new Date(mon); end.setDate(mon.getDate()+6);
+  const pct=tot?Math.round(dn/tot*100):0;
+  main.innerHTML=`<div class="sesshead"><h2>This week</h2><div class="calhead" style="gap:8px;margin:0"><button data-wnav="-1" aria-label="Previous week">‹</button><b style="font-size:16px">${esc(fmtDate(m))} – ${esc(fmtDate(iso(end)))}</b><button data-wnav="1" aria-label="Next week">›</button></div></div>
+  <div class="kpis"><div class="kpi"><div class="big">${dn}<span style="font-size:18px">/${tot}</span></div><div class="lbl">Done this week</div></div><div class="kpi"><div class="big">${pct}%</div><div class="lbl">Complete</div></div><div class="kpi"><div class="big">${WEEK.slice(0,6).reduce((a,w,di)=>{ const dt=new Date(mon); dt.setDate(mon.getDate()+di); return a+(w.items.some(it=>it.k==="run"&&isWDone(m,di,it,iso(dt)))?1:0); },0)}</div><div class="lbl">Runs done</div></div></div>
+  <p class="daynote">Tap the circle to mark something done. Gym days tick themselves when you log that workout any day this week; the weigh-in ticks when you log it.</p>${cards}`;
+  if(m===iso(monday(parse(td)))){ const t=document.querySelector(".istoday"); if(t && !renderWeek.scrolled){ renderWeek.scrolled=true; setTimeout(()=>t.scrollIntoView({block:"start"}),50); } }
+}
+async function weekClick(e){
+  const nv=e.target.closest("[data-wnav]"); if(nv){ const d=parse(weekStart); d.setDate(d.getDate()+7*(+nv.dataset.wnav)); weekStart=iso(d); renderWeek(); return; }
+  const tk=e.target.closest("[data-wk]"); if(!tk) return;
+  if(tk.dataset.auto){ return; }
+  const m=weekStart, r=weekRec(m); r.done=r.done||{}; r.done[tk.dataset.wk]=!r.done[tk.dataset.wk]; r.u=Date.now();
+  logs[wkey(m)]=[r]; try{ await store.save(wkey(m)); }catch(err){} renderWeek();
+}
+
 /* ---------- diet ---------- */
 const DIET = {
   strength:{label:"Strength",full:"Strength day",note:"Cooked weights for chicken; dry weight for pasta.",meals:[
@@ -789,7 +848,7 @@ const START={d:"2026-11-25",kg:71.5,bf:24.2,fm:17.3,lm:54.2,vf:11,t:1}, GOAL={kg
 let dietDate=null;
 const dkey=d=>"diet-"+d;
 function dayRec(d){ return ((logs[dkey(d)]||[])[0]) || null; }
-function defaultType(d){ return parse(d).getDay()===0 ? "fast" : "strength"; }
+function defaultType(d){ return ["fast","serve","tennis","strength","tennis","serve","tennis"][parse(d).getDay()]; }
 async function saveDay(d,rec){ rec.u=Date.now(); rec.d=d; logs[dkey(d)]=[rec]; try{ await store.save(dkey(d)); }catch(e){} }
 function weighIns(){ return [START, ...(logs.weighins||[])].sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t); }
 function fmt1(v){ return v==null?"–":(Math.round(v*10)/10).toString(); }
@@ -878,6 +937,7 @@ function findItem(id){ for(const d of DAYS) for(const b of d.blocks) for(const i
 
 main.addEventListener("click", async e=>{
   if(location.hash==="#diet"){ await dietClick(e); return; }
+  if(["","#","#week"].includes(location.hash)){ await weekClick(e); return; }
   const cd=e.target.closest("[data-date]");
   if(cd){ selDate=cd.dataset.date; const d=parse(selDate); if(d.getMonth()!==calMonth.getMonth()){ calMonth=new Date(d.getFullYear(),d.getMonth(),1); } renderStats(); return; }
   const cn=e.target.closest("[data-cal]");
