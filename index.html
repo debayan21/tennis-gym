@@ -880,13 +880,14 @@ function gymLogged(dateIso){ // which strength workouts were logged on this exac
 function rowsFor(m,di,dateIso){
   const r=weekRec(m), g=gymLogged(dateIso), rows=[];
   WEEK[di].items.forEach(it=>{
+    if((r.skip||{})[di+"-"+it.id]) return;
     let name=it.name, auto=false, sub=it.sub||"";
     if(it.k==="gym"){ if(g.length){ auto=true; name="Strength: "+g.map(x=>FOCUS[x]).join(" + "); } else sub="Plan: "+FOCUS[it.plan]; }
     if(it.k==="weigh") auto=(logs.weighins||[]).some(x=>x.d===dateIso);
-    rows.push({key:di+"-"+it.id, k:it.k, name, when:it.when, sub, link:it.link, open:it.k==="gym"?(g[0]||it.plan):null, auto, done:auto||!!r.done[di+"-"+it.id]});
+    rows.push({key:di+"-"+it.id, k:it.k, name, when:it.when, sub, link:it.link, open:it.k==="gym"?(g[0]||it.plan):null, auto, done:auto||!!r.done[di+"-"+it.id], skip:(it.k==="gym"&&g.length)?null:di+"-"+it.id, delGym:(it.k==="gym"&&g.length)?dateIso:null});
   });
   // strength logged on a day with no planned strength slot
-  if(g.length && !WEEK[di].items.some(it=>it.k==="gym")) rows.unshift({key:di+"-gymlog", k:"gym", name:"Strength: "+g.map(x=>FOCUS[x]).join(" + "), sub:"Logged in the app", open:g[0], auto:true, done:true, extra:true});
+  if(g.length && !WEEK[di].items.some(it=>it.k==="gym")) rows.unshift({key:di+"-gymlog", k:"gym", name:"Strength: "+g.map(x=>FOCUS[x]).join(" + "), sub:"Logged in the app", open:g[0], auto:true, done:true, extra:true, delGym:dateIso});
   (r.extra[di]||[]).forEach((a,ix)=>{ const A=ACTS[a]; if(!A) return; if(A.k==="gym" && g.includes(A.day)) return; rows.push({key:di+"-x"+ix, k:A.k, name:A.name, open:A.day||null, done:!!r.done[di+"-x"+ix], extra:true, rm:ix}); });
   return rows;
 }
@@ -898,9 +899,11 @@ function renderWeek(){
     tot+=rows.length; dn+=rows.filter(x=>x.done).length; runs+=rows.filter(x=>x.k==="run"&&x.done).length; str+=rows.filter(x=>x.k==="gym"&&x.done).length; ten+=rows.filter(x=>x.k==="tennis"&&x.done).length;
     const html=rows.map(x=>{ const [lab,cls]=KIND[x.k];
       const go = x.open ? `<a class="mini" href="#${x.open}">${x.auto?"View":"Open workout"}</a>` : x.link ? `<a class="mini" href="${x.link}">Open</a>` : "";
-      return `<div class="wrow ${x.done?"done":""}"><button class="tick ${x.done?"on":""}" data-wk="${x.key}" ${x.auto?'data-auto="1"':""} aria-pressed="${x.done}" aria-label="Mark ${esc(x.name)} complete">${x.done?"✓":""}</button><div class="wtxt"><div class="name" style="font-size:16px">${esc(x.name)}${x.when?` <span class="k">(${x.when})</span>`:""}${go}</div>${x.sub?`<div class="rx">${esc(x.sub)}</div>`:""}${x.auto&&x.k!=="weigh"&&!x.sub?`<div class="rx">Logged in the app ✓</div>`:""}</div><span class="tag ${cls}">${lab}</span>${x.rm!=null?`<button class="del" data-wrm="${di}-${x.rm}" aria-label="Remove">✕</button>`:""}</div>`; }).join("");
+      return `<div class="wrow ${x.done?"done":""}"><button class="tick ${x.done?"on":""}" data-wk="${x.key}" ${x.auto?'data-auto="1"':""} aria-pressed="${x.done}" aria-label="Mark ${esc(x.name)} complete">${x.done?"✓":""}</button><div class="wtxt"><div class="name" style="font-size:16px">${esc(x.name)}${x.when?` <span class="k">(${x.when})</span>`:""}${go}</div>${x.sub?`<div class="rx">${esc(x.sub)}</div>`:""}${x.auto&&x.k!=="weigh"&&!x.sub?`<div class="rx">Logged in the app ✓</div>`:""}</div><span class="tag ${cls}">${lab}</span>${x.rm!=null?`<button class="del" data-wrm="${di}-${x.rm}" aria-label="Remove">✕</button>`:x.delGym?`<button class="del" data-wdelgym="${x.delGym}" aria-label="Delete this workout log">✕</button>`:x.skip?`<button class="del" data-wskip="${x.skip}" aria-label="Not doing this today">✕</button>`:""}</div>`; }).join("");
     const add=`<div class="wadd"><select data-wadd="${di}" aria-label="Add an activity to ${esc(dt.toLocaleDateString(undefined,{weekday:"long"}))}"><option value="">+ Add what you did</option>${Object.entries(ACTS).map(([id,A])=>`<option value="${id}">${esc(A.name)}</option>`).join("")}</select></div>`;
-    return `<article class="card wday ${isT?"istoday":""}"><div class="calhead"><b>${dt.toLocaleDateString(undefined,{weekday:"long"})} <span class="k" style="font-family:Barlow,sans-serif;font-size:14px;font-weight:500">${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}${isT?" · today":""}</span></b><span class="k">${rows.filter(x=>x.done).length}/${rows.length}</span></div>${w.note?`<p class="sum" style="margin:0 0 6px;color:var(--muted);font-size:14px">${esc(w.note)}</p>`:""}${html}${add}</article>`;
+    const skipped=WEEK[di].items.filter(it=>(weekRec(m).skip||{})[di+"-"+it.id]);
+    const skipHtml=skipped.length?`<p class="rx" style="margin:6px 0 0">Skipped: ${skipped.map(it=>`${esc(it.name)} <button class="mini" style="background:none;border:0;cursor:pointer;padding:0;color:var(--court);text-decoration:underline" data-wunskip="${di}-${it.id}">undo</button>`).join(" · ")}</p>`:"";
+    return `<article class="card wday ${isT?"istoday":""}"><div class="calhead"><b>${dt.toLocaleDateString(undefined,{weekday:"long"})} <span class="k" style="font-family:Barlow,sans-serif;font-size:14px;font-weight:500">${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}${isT?" · today":""}</span></b><span class="k">${rows.filter(x=>x.done).length}/${rows.length}</span></div>${w.note?`<p class="sum" style="margin:0 0 6px;color:var(--muted);font-size:14px">${esc(w.note)}</p>`:""}${html}${skipHtml}${add}</article>`;
   }).join("");
   const end=new Date(mon); end.setDate(mon.getDate()+6);
   main.innerHTML=`<div class="sesshead"><h2>This week</h2><div class="calhead" style="gap:8px;margin:0"><button data-wnav="-1" aria-label="Previous week">‹</button><b style="font-size:16px">${esc(fmtDate(m))} – ${esc(fmtDate(iso(end)))}</b><button data-wnav="1" aria-label="Next week">›</button></div></div>
@@ -913,8 +916,21 @@ async function weekClick(e){
   const nv=e.target.closest("[data-wnav]"); if(nv){ const d=parse(weekStart); d.setDate(d.getDate()+7*(+nv.dataset.wnav)); weekStart=iso(d); renderWeek(); return; }
   const rm=e.target.closest("[data-wrm]"); if(rm){ const [di,ix]=rm.dataset.wrm.split("-").map(Number), r=weekRec(weekStart); (r.extra[di]||[]).splice(ix,1);
     const nd={}; Object.entries(r.done).forEach(([k,v])=>{ const mm=/^(\d+)-x(\d+)$/.exec(k); if(!mm||+mm[1]!==di) nd[k]=v; else if(+mm[2]<ix) nd[k]=v; else if(+mm[2]>ix) nd[mm[1]+"-x"+(+mm[2]-1)]=v; }); r.done=nd; await saveWeek(weekStart,r); return; }
-  const tk=e.target.closest("[data-wk]"); if(!tk || tk.dataset.auto) return;
+  const sk=e.target.closest("[data-wskip]"); if(sk){ const r=weekRec(weekStart); r.skip=r.skip||{}; r.skip[sk.dataset.wskip]=true; delete r.done[sk.dataset.wskip]; await saveWeek(weekStart,r); return; }
+  const us=e.target.closest("[data-wunskip]"); if(us){ const r=weekRec(weekStart); if(r.skip) delete r.skip[us.dataset.wunskip]; await saveWeek(weekStart,r); return; }
+  const dg=e.target.closest("[data-wdelgym]"); if(dg){ await deleteGymDay(dg.dataset.wdelgym); return; }
+  const tk=e.target.closest("[data-wk]"); if(!tk) return;
+  if(tk.dataset.auto){ const row=tk.closest(".wrow"), d=row&&row.querySelector("[data-wdelgym]"); if(d) await deleteGymDay(d.dataset.wdelgym); return; }
   const r=weekRec(weekStart); r.done[tk.dataset.wk]=!r.done[tk.dataset.wk]; await saveWeek(weekStart,r);
+}
+async function deleteGymDay(dIso){
+  const ids=new Set(); statDays().forEach(d=>d.blocks.forEach(b=>b.items.forEach(i=>{ if(i.type && (logs[i.id]||[]).some(e=>e.d===dIso)) ids.add(i.id); })));
+  const sess=(logs.sessions||[]).filter(x=>x.d===dIso).length;
+  if(!ids.size && !sess) return;
+  if(!(await ask(`Delete the strength workout logged on ${fmtDate(dIso)}? This removes ${ids.size} exercise${ids.size===1?"":"s"} from your history${sess?" and the day’s summary":""}. It can’t be undone.`,"Delete workout","Keep it"))) return;
+  for(const id of ids){ logs[id]=(logs[id]||[]).filter(e=>e.d!==dIso); try{ await store.save(id); }catch(err){} }
+  if(sess){ logs.sessions=(logs.sessions||[]).filter(x=>x.d!==dIso); try{ await store.save("sessions"); }catch(err){} }
+  render();
 }
 async function weekAdd(sel){
   const v=sel.value; if(!v) return; const di=+sel.dataset.wadd, r=weekRec(weekStart);
