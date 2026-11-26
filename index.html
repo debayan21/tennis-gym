@@ -197,6 +197,9 @@ section.block{margin-top:18px}
 .wrow .tag{margin-top:0;flex:none}
 .wadd{border-top:1px solid var(--line);padding-top:8px}
 .wadd select{font:inherit;font-size:15px;color:var(--court);font-weight:600;background:transparent;border:1px dashed var(--line);border-radius:8px;padding:6px 10px;width:100%}
+.editbtn{position:absolute;right:10px;top:10px;background:transparent;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:12px;padding:3px 10px;border-radius:999px;cursor:pointer}
+.addex{display:block;width:100%;background:var(--surface);border:1px dashed var(--line);border-top:0;color:var(--court);font-weight:600;font-size:14px;padding:10px;border-radius:0 0 10px 10px;cursor:pointer;text-align:left}
+.authbox select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -336,6 +339,69 @@ const COOL = [
 const COOLNOTE = {day1:"Hold 45–60s, breathe slowly. Extra time on couch stretch and calves today",day2:"Hold 45–60s, breathe slowly. Extra time on lats, chest, T-spine and neck today",day3:"Hold 45–60s, breathe slowly. Extra time on couch stretch and calves today"};
 DAYS.forEach(d=>{ d.blocks[0].bn="ToM steps 1–4, mobility, glute activation, line hops, then the superset"; d.blocks.push({h:"Cool-down",bn:COOLNOTE[d.id],items:COOL.map((x,i)=>({...x,code:"S"+(i+1)}))}); });
 
+/* ---------- your edits to the program (swap / remove / add) ---------- */
+const BASE_DAYS = JSON.parse(JSON.stringify(DAYS));
+let ARCHIVE = {}; // per day: original items that were removed or swapped out (history stays visible in Stats)
+function custom(){ const c=((logs.custom||[])[0])||{}; c.hide=c.hide||{}; c.swap=c.swap||{}; c.add=c.add||{}; return c; }
+function customItem(a,extra){ return Object.assign({id:a.id, name:a.name, rx:a.rx||"", st:"custom", type:a.type||undefined, v:[{label:"Search YouTube", url:"https://www.youtube.com/results?search_query="+encodeURIComponent(a.name), tom:false}]}, extra); }
+function rebuildProgram(){
+  const c=custom(); ARCHIVE={};
+  const built=BASE_DAYS.map(bd=>{ const d=JSON.parse(JSON.stringify(bd)), arch=[];
+    d.blocks.forEach((b,bi)=>{
+      b.items=b.items.flatMap(it=>{ const sw=(c.swap[d.id]||{})[it.id], hid=(c.hide[d.id]||{})[it.id];
+        if(hid){ arch.push(Object.assign(it,{removed:true})); return []; }
+        if(sw){ arch.push(Object.assign({},it,{swappedOut:true})); return [customItem(sw,{code:it.code, swappedFrom:it.name, baseId:it.id})]; }
+        return [it]; });
+      ((c.add[d.id]||{})[bi]||[]).forEach((a,ix)=>b.items.push(customItem(a,{code:"+"+(ix+1), added:true, blockIdx:bi})));
+    });
+    ARCHIVE[d.id]=arch; return d; });
+  DAYS.splice(0,DAYS.length,...built);
+}
+const statDays = () => DAYS.map(d=>({...d, blocks:[...d.blocks,{h:"Archived",items:ARCHIVE[d.id]||[]}]}));
+async function saveCustom(c){ c.u=Date.now(); logs.custom=[c]; try{ await store.save("custom"); }catch(e){} render(); }
+function editForm({title,sub="",name="",rx="",type="lift",actions}){
+  return new Promise(res=>{
+    const m=document.createElement("div"); m.className="modal"; m.setAttribute("role","dialog"); m.setAttribute("aria-modal","true");
+    m.innerHTML=`<form class="box authbox" novalidate><h2>${esc(title)}</h2>${sub?`<p>${esc(sub)}</p>`:""}
+      <label>Exercise<input name="name" value="${esc(name)}" maxlength="80" placeholder="e.g. Bulgarian split squat"></label>
+      <label>Sets / reps / notes<input name="rx" value="${esc(rx)}" maxlength="140" placeholder="e.g. 3×10/side @ RPE 7"></label>
+      <label>Track<select name="type">${[["lift","Weight & reps"],["time","Time (seconds)"],["dist","Distance (cm)"],["rounds","Rounds"],["","Just tick it off"]].map(([v,l])=>`<option value="${v}" ${v===(type||"")?"selected":""}>${l}</option>`).join("")}</select></label>
+      <div class="row" style="flex-wrap:wrap">${actions.map(a=>`<button type="${a.primary?"submit":"button"}" class="${a.primary?"yes":"no"}" data-act="${a.v}">${esc(a.l)}</button>`).join("")}</div>
+      <p class="msg" role="status"></p></form>`;
+    const f=m.querySelector("form"), done=v=>{ m.remove(); res(v); };
+    const go=act=>{ const name=f.elements.name.value.trim(), rx=f.elements.rx.value.trim(), type=f.elements.type.value;
+      if(["swap","save","add"].includes(act) && !name){ f.querySelector(".msg").textContent="Give the exercise a name."; return; }
+      done({act,name,rx,type}); };
+    m.addEventListener("click",e=>{ const b=e.target.closest("[data-act]"); if(b && b.type==="button"){ e.preventDefault(); b.dataset.act==="cancel"?done(null):go(b.dataset.act); } else if(e.target===m) done(null); });
+    f.addEventListener("submit",e=>{ e.preventDefault(); go(f.querySelector('[type="submit"]').dataset.act); });
+    document.body.appendChild(m); f.elements.name.focus();
+  });
+}
+async function editItem(id){
+  const day=currentDay(); if(!day) return; const it=findItem(id); if(!it) return; const c=custom(), D=day.id;
+  const isAdded=!!it.added, isSwap=!!it.baseId, base=it.baseId||id, acts=[{v:"cancel",l:"Cancel"}];
+  if(isAdded){ acts.push({v:"delete",l:"Delete"},{v:"save",l:"Save",primary:true}); }
+  else { acts.push({v:"remove",l:"Remove from "+day.n}); if(isSwap) acts.push({v:"restore",l:"Restore original"}); acts.push({v:"swap",l:isSwap?"Save swap":"Swap in",primary:true}); }
+  const r=await editForm({ title: isAdded?"Edit your exercise":isSwap?"Edit your swap":"Swap or remove",
+    sub: isAdded?"":isSwap?`Original: ${it.swappedFrom}. Only ${day.n} changes; past logs are kept.`:`Replace “${it.name}” on ${day.n} with something else, or remove it. Past logs are kept.`,
+    name:(isAdded||isSwap)?it.name:"", rx:(isAdded||isSwap)?it.rx:it.rx, type:(isAdded||isSwap)?(it.type||""):(it.type||"lift"), actions:acts });
+  if(!r) return;
+  if(r.act==="remove"){ if(!(await ask(`Remove “${isSwap?it.swappedFrom:it.name}” from ${day.n}? You can restore it at the bottom of the day.`,"Remove"))) return; (c.hide[D] ||= {})[base]=true; if(c.swap[D]) delete c.swap[D][base]; }
+  else if(r.act==="restore"){ if(c.swap[D]) delete c.swap[D][base]; }
+  else if(r.act==="swap"){ (c.swap[D] ||= {})[base]={id: isSwap?it.id:"c-"+Date.now().toString(36), name:r.name, rx:r.rx, type:r.type}; }
+  else if(r.act==="save"){ const a=((c.add[D]||{})[it.blockIdx]||[]).find(x=>x.id===id); if(a) Object.assign(a,{name:r.name,rx:r.rx,type:r.type}); }
+  else if(r.act==="delete"){ if(!(await ask(`Delete “${it.name}” from ${day.n}? Its past logs stay in Stats.`,"Delete"))) return; c.add[D][it.blockIdx]=(c.add[D][it.blockIdx]||[]).filter(x=>x.id!==id); }
+  await saveCustom(c);
+}
+async function addExercise(bi){
+  const day=currentDay(); if(!day) return; const c=custom(), D=day.id;
+  const r=await editForm({title:"Add an exercise", sub:`Adds to “${day.blocks[bi].h}” on ${day.n}.`, type:"lift", actions:[{v:"cancel",l:"Cancel"},{v:"add",l:"Add",primary:true}]});
+  if(!r) return; ((c.add[D] ||= {})[bi] ||= []).push({id:"c-"+Date.now().toString(36), name:r.name, rx:r.rx, type:r.type});
+  await saveCustom(c);
+}
+async function restoreItem(baseId){ const day=currentDay(); if(!day) return; const c=custom(); if(c.hide[day.id]) delete c.hide[day.id][baseId]; await saveCustom(c); }
+
+
 const FIELDS = {
   lift:[["kg","Weight (kg)"],["reps","Reps"],["sets","Sets"],["rpe","RPE"]],
   time:[["sec","Seconds"],["sets","Sets"],["kg","Weight (kg)"]],
@@ -394,7 +460,7 @@ async function flush(){
 }
 function cloudStore(){ return { kind:"cloud", async save(id){ cacheLocal(); const p=pend.get(); (id?[id]:Object.keys(logs)).forEach(k=>p.add(k)); pend.set(p); await flush(); } }; }
 function mergeDoc(k,a,b){
-  if(k.startsWith("draft-")||k.startsWith("diet-")||k.startsWith("week-")){ const x=a[0], y=b[0]; if(!x) return b; if(!y) return a; return (x.u||0)>=(y.u||0)?a:b; }
+  if(k==="custom"||k.startsWith("draft-")||k.startsWith("diet-")||k.startsWith("week-")){ const x=a[0], y=b[0]; if(!x) return b; if(!y) return a; return (x.u||0)>=(y.u||0)?a:b; }
   const m=new Map(); [...a,...b].forEach(e=>m.set(e.t,e)); return [...m.values()];
 }
 async function loadCloud(){
@@ -474,8 +540,8 @@ function spark(item, entries){
 }
 function itemHTML(item){
   const entries=(logs[item.id]||[]).slice().sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:(a.t||0)-(b.t||0));
-  const tag = item.st==="new"?'<span class="tag new">New</span>':item.st==="changed"?'<span class="tag changed">Changed</span>':'<span class="tag same">Same as ToM</span>';
-  const was = (item.was||item.why) ? `<div class="was">${item.was?`Was <b>${esc(item.was)}</b>. `:""}${item.why?esc(item.why)+".":""}</div>` : "";
+  const tag = item.st==="custom"?`<span class="tag new" style="background:var(--ball);color:var(--ball-ink)">${item.added?"Your addition":"Your swap"}</span>`:item.st==="new"?'<span class="tag new">New</span>':item.st==="changed"?'<span class="tag changed">Changed</span>':'<span class="tag same">Same as ToM</span>';
+  const was = item.swappedFrom ? `<div class="was">Swapped in for <b>${esc(item.swappedFrom)}</b>.</div>` : (item.was||item.why) ? `<div class="was">${item.was?`Was <b>${esc(item.was)}</b>. `:""}${item.why?esc(item.why)+".":""}</div>` : "";
   let stats="", panel="";
   if(item.type){
     if(entries.length){
@@ -490,9 +556,10 @@ function itemHTML(item){
     panel=`<button class="logbtn" data-toggle="${esc(item.id)}" aria-expanded="${isOpen}">${isOpen?"Close":"Log a set"}</button>
       <div class="panel" ${isOpen?"":"hidden"}><form data-form="${esc(item.id)}"><div class="fields"><label>Date<input name="d" type="date" value="${today()}" required></label>${f}<label class="wide">Note<input name="note" type="text" maxlength="140" placeholder="How it felt, cues, pain-free?"></label></div><button class="save" type="submit">Save session</button><span class="msg" role="status"></span></form>${hist}</div>`;
   }
-  return `<article class="ex" id="ex-${esc(item.id)}"><div class="code">${esc(item.code)}</div><h3 class="name">${esc(item.name)}</h3><div class="rx">${esc(item.rx)}</div>${tag}${was}${videoLinks(item)}${stats}${panel}</article>`;
+  return `<article class="ex" id="ex-${esc(item.id)}"><div class="code">${esc(item.code)}</div><button class="editbtn" data-edit="${esc(item.id)}" aria-label="Swap or remove ${esc(item.name)}">Edit</button><h3 class="name" style="padding-right:48px">${esc(item.name)}</h3><div class="rx">${esc(item.rx)}</div>${tag}${was}${videoLinks(item)}${stats}${panel}</article>`;
 }
 function render(){
+  rebuildProgram();
   const day=currentDay();
   const hh=location.hash, cur=k=>hh===k?'aria-current="page"':"";
   nav.innerHTML=`<a href="#week" ${(hh===""||hh==="#"||hh==="#week")?'aria-current="page"':""}><div class="n">Week</div><div class="f">Today</div></a>`+DAYS.map(d=>`<a href="#${d.id}" ${day&&d.id===day.id?'aria-current="page"':""}><div class="n">${d.n.replace("Day ","D")}</div><div class="f">${d.f}</div></a>`).join("")+
@@ -500,13 +567,14 @@ function render(){
   clearInterval(timerId);
   if(!day){ if(location.hash==="#diet") renderDiet(); else if(location.hash==="#stats") renderStats(); else renderWeek(); return; }
   if(inSession()){ renderSession(day); return; }
-  const counts={new:0,changed:0,same:0};
+  const counts={new:0,changed:0,same:0,custom:0};
   day.blocks.forEach(b=>b.items.forEach(i=>counts[i.st]++));
   const dr=loadDraft(day.id);
   const td=(logs.sessions||[]).filter(x=>x.d===today() && x.day===day.id);
   const startBar = (td.length && !dr) ? `<div class="startbar donebar"><p>Completed today ✓ ${(td.reduce((a,x)=>a+(x.vol||0),0)).toLocaleString()} kg lifted, ${td.reduce((a,x)=>a+(x.min||0),0)} min.</p><a class="start" href="#stats">View in calendar</a></div>` : `<div class="startbar"><p>${dr?"Workout in progress since "+new Date(dr.start).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+".":"Log every exercise as you go, then save it all at the end."}</p><a class="start" href="#log-${day.id}">${dr?"Resume workout":"Start today’s workout"}</a></div>`;
-  main.innerHTML=startBar+`<p class="daynote">${esc(day.note)}</p><div class="legend"><span class="tag new">${counts.new} new</span><span class="tag changed">${counts.changed} changed</span><span class="tag same">${counts.same} same as ToM</span></div>`+
-    day.blocks.map(b=>`<section class="block"><div class="bhead"><h2>${esc(b.h)}</h2><span class="bn">${esc(b.bn)}</span></div>${b.items.map(itemHTML).join("")}</section>`).join("");
+  main.innerHTML=startBar+`<p class="daynote">${esc(day.note)}</p><div class="legend"><span class="tag new">${counts.new} new</span><span class="tag changed">${counts.changed} changed</span><span class="tag same">${counts.same} same as ToM</span>${counts.custom?`<span class="tag new" style="background:var(--ball);color:var(--ball-ink)">${counts.custom} yours</span>`:""}</div><p class="daynote">Tap <b>Edit</b> on any exercise to swap it or remove it, or add your own at the end of a block. Changes apply to this day only and save to your account.</p>`+
+    day.blocks.map((b,bi)=>`<section class="block"><div class="bhead"><h2>${esc(b.h)}</h2><span class="bn">${esc(b.bn)}</span></div>${b.items.map(itemHTML).join("")}<button class="addex" data-addex="${bi}">+ Add exercise to ${esc(b.h)}</button></section>`).join("")+
+    ((ARCHIVE[day.id]||[]).filter(i=>i.removed).length?`<section class="block"><div class="bhead"><h2>Removed</h2><span class="bn">Tap restore to bring one back</span></div><div class="card"><ul class="rows">${ARCHIVE[day.id].filter(i=>i.removed).map(i=>`<li><span class="m">${esc(i.name)}</span><button class="export" style="margin:0;padding:4px 12px" data-restore="${esc(i.id)}">Restore</button></li>`).join("")}</ul></div></section>`:"");
 }
 function ask(text, yes="Yes", no="Cancel"){
   return new Promise(res=>{
@@ -653,7 +721,7 @@ const parse = s => { const [y,m,d]=s.split("-").map(Number); return new Date(y,m
 const monday = d => { const x=new Date(d); const k=(x.getDay()+6)%7; x.setDate(x.getDate()-k); x.setHours(0,0,0,0); return x; };
 function allEntries(){
   const out=[], seen=new Set();
-  DAYS.forEach(day=>day.blocks.forEach(b=>b.items.forEach(item=>{
+  statDays().forEach(day=>day.blocks.forEach(b=>b.items.forEach(item=>{
     if(!item.type || seen.has(item.id)) return; seen.add(item.id);
     (logs[item.id]||[]).forEach(e=>out.push({item,day,e}));
   })));
@@ -662,10 +730,10 @@ function allEntries(){
 const vol = r => volOf(r.item, r.e);
 function renderStats(){
   const all=allEntries();
-  if(!all.length && !(logs.sessions||[]).length){ main.innerHTML='<p class="daynote">No workouts yet. Open Day 1, 2 or 3, tap “Start today’s workout”, and save it when you finish. Your calendar and stats build from there.</p>'; return; }
+  if(!all.length && !(logs.sessions||[]).length && !Object.keys(logs).some(k=>/^(week|diet)-/.test(k)) && !(logs.weighins||[]).length){ main.innerHTML='<p class="daynote">No workouts yet. Open Day 1, 2 or 3, tap “Start today’s workout”, and save it when you finish. Your calendar and stats build from there.</p>'; return; }
   const byDate={}; all.forEach(r=>{ (byDate[r.e.d] ||= []).push(r); });
   (logs.sessions||[]).forEach(x=>{ byDate[x.d] ||= []; });
-  const PRT=new Set(); { const sn=new Set(); DAYS.forEach(day=>day.blocks.forEach(b=>b.items.forEach(item=>{ if(!item.type||sn.has(item.id)) return; sn.add(item.id); let best=null; (logs[item.id]||[]).slice().sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t).forEach(e=>{ const v=primary(item,e); if(v==null) return; if(best!=null&&v>best) PRT.add(e.t); if(best==null||v>best) best=v; }); }))); }
+  const PRT=new Set(); { const sn=new Set(); statDays().forEach(day=>day.blocks.forEach(b=>b.items.forEach(item=>{ if(!item.type||sn.has(item.id)) return; sn.add(item.id); let best=null; (logs[item.id]||[]).slice().sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t).forEach(e=>{ const v=primary(item,e); if(v==null) return; if(best!=null&&v>best) PRT.add(e.t); if(best==null||v>best) best=v; }); }))); }
   const dates=Object.keys(byDate).sort();
   const now=new Date(), wk=iso(monday(now));
   const thisWeek=dates.filter(d=>iso(monday(parse(d)))===wk).length;
@@ -677,15 +745,15 @@ function renderStats(){
 
   // month calendar
   const sessions=logs.sessions||[];
-  if(!selDate) selDate=dates[dates.length-1];
+  if(!selDate) selDate=dates[dates.length-1]||today();
   if(!calMonth){ calMonth=parse(selDate); calMonth.setDate(1); }
   const y=calMonth.getFullYear(), mo=calMonth.getMonth(), gStart=monday(new Date(y,mo,1));
   let grid=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="dow">${d}</div>`).join("");
   for(let i=0;i<42;i++){
     const d=new Date(gStart); d.setDate(d.getDate()+i);
     if(i>=35 && d.getMonth()!==mo) break;
-    const k=iso(d), rs=byDate[k]||[], ks=sessions.filter(x=>x.d===k), tags=[...new Set([...rs.map(r=>r.day.n),...ks.map(x=>(DAYS.find(dd=>dd.id===x.day)||{}).n).filter(Boolean)].map(t=>t.replace("Day ","D")))];
-    const cv=ks.length?ks.reduce((a,x)=>a+(x.vol||0),0):rs.reduce((a,r)=>a+vol(r),0), has=rs.length||ks.length;
+    const k=iso(d), acts=activitiesOn(k), dsum=dietSummary(k), rs=byDate[k]||[], ks=sessions.filter(x=>x.d===k), tags=[...new Set([...acts.filter(a=>a.k==="tennis").map(()=>"T"),...acts.filter(a=>a.k==="run").map(()=>"R"),...rs.map(r=>r.day.n),...ks.map(x=>(DAYS.find(dd=>dd.id===x.day)||{}).n).filter(Boolean)].map(t=>t.replace("Day ","D")))];
+    const cv=ks.length?ks.reduce((a,x)=>a+(x.vol||0),0):rs.reduce((a,r)=>a+vol(r),0), has=rs.length||ks.length||acts.length||dsum;
     grid+=`<button data-date="${k}" class="${d.getMonth()!==mo?"out ":""}${has?"has ":""}${k===iso(now)?"today ":""}${k===selDate?"sel":""}" aria-label="${esc(fmtDate(k))}${rs.length?", "+rs.length+" exercises":""}">${d.getDate()}${tags.map(t=>`<span class="b">${t}</span>`).join("")}${cv?`<span class="vt">${cv>=1000?(cv/1000).toFixed(1)+"t":Math.round(cv)+"kg"}</span>`:""}</button>`;
   }
   const monthName=calMonth.toLocaleDateString(undefined,{month:"long",year:"numeric"});
@@ -693,7 +761,9 @@ function renderStats(){
   const sr=byDate[selDate]||[], ss=sessions.filter(x=>x.d===selDate);
   const prSet=new Set();
   let detail;
-  if(!sr.length && !ss.length) detail=`<div class="dayd"><h3>${esc(fmtDate(selDate))}</h3><p class="sum">Rest day. Nothing logged.</p></div>`;
+  const sacts=activitiesOn(selDate), sdiet=dietSummary(selDate);
+  const extraDetail=(sacts.length?`<p class="sum">${sacts.map(a=>`<span class="chip">${esc(KIND[a.k][0])}</span>${esc(a.name)}`).join(" ")}</p>`:"")+(sdiet?`<p class="sum">Diet: ${esc(DIET[sdiet.type].label)}, ${sdiet.k.toLocaleString()}/${sdiet.tk.toLocaleString()} kcal, protein ${sdiet.p}/${sdiet.tp} g, meals ${sdiet.md}/${sdiet.mt}, rules ${sdiet.rd}/${sdiet.rt}. <b style="color:${VCOL[sdiet.verdict]}">${sdiet.verdict}</b></p>`:"");
+  if(!sr.length && !ss.length) detail=`<div class="dayd"><h3>${esc(parse(selDate).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"}))}</h3>${extraDetail||'<p class="sum">Rest day. Nothing logged.</p>'}</div>`;
   else {
     const v=ss.length&&ss.some(x=>x.vol!=null)?ss.reduce((a,x)=>a+(x.vol||0),0):sr.reduce((a,r)=>a+vol(r),0), mins=ss.reduce((a,x)=>a+(x.min||0),0);
     const dn=ss.reduce((a,x)=>a+(x.done||0),0), tt=ss.reduce((a,x)=>a+(x.tot||0),0), mb=ss.reduce((a,x)=>a+(x.mob||0),0), mt=ss.reduce((a,x)=>a+(x.mobTot||0),0);
@@ -702,7 +772,7 @@ function renderStats(){
       ${tt?`<p class="sum">${Math.round(dn/tt*100)}% complete (${dn}/${tt})${mt?`, mobility ${mb}/${mt}`:""}.</p>`:""}
       <p class="sum">${[...new Set(sr.map(r=>r.day.n+" ("+r.day.f+")"))].join(", ")}. ${sr.length} exercise${sr.length>1?"s":""}${mins?", "+mins+" min":""}.</p>
       ${ss.filter(x=>x.note).map(x=>`<p class="sum">“${esc(x.note)}”</p>`).join("")}
-      <ul class="rows">${sr.map(r=>`<li><span class="m">${esc(r.item.name)}${PRT.has(r.e.t)?'<span class="prmark">PR</span>':""}</span><span class="r">${esc(describe(r.item,r.e))}</span></li>`).join("")}</ul></div>`;
+      ${extraDetail}<ul class="rows">${sr.map(r=>`<li><span class="m">${esc(r.item.name)}${PRT.has(r.e.t)?'<span class="prmark">PR</span>':""}</span><span class="r">${esc(describe(r.item,r.e))}</span></li>`).join("")}</ul></div>`;
   }
   // heatmap: last 12 weeks
   const N=13, cs=14, gap=3, left=24, top=14;
@@ -736,7 +806,7 @@ function renderStats(){
 
   // PRs: entries that beat every earlier entry for that exercise
   const prs=[]; const seen=new Set();
-  DAYS.forEach(day=>day.blocks.forEach(b=>b.items.forEach(item=>{
+  statDays().forEach(day=>day.blocks.forEach(b=>b.items.forEach(item=>{
     if(!item.type||seen.has(item.id)) return; seen.add(item.id);
     const es=(logs[item.id]||[]).slice().sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t);
     const u=primaryUnit(item,es); let best=null;
@@ -757,7 +827,8 @@ function renderStats(){
     <div class="kpi"><div class="big">${streak}</div><div class="lbl">Week streak</div></div>
     <div class="kpi"><div class="big">${weekVol?Math.round(weekVol/1000*10)/10+"t":"0"}</div><div class="lbl">Volume this week</div></div>
   </div>
-  <section class="block"><div class="bhead"><h2>Calendar</h2><span class="bn">Tap a day to see the workout</span></div>
+  ${statsExtras()}
+  <section class="block"><div class="bhead"><h2>Calendar</h2><span class="bn">Tap a day: workout, court time and diet</span></div>
     <div class="card"><div class="calhead"><button data-cal="-1" aria-label="Previous month">‹</button><b>${esc(monthName)}</b><button data-cal="1" aria-label="Next month">›</button></div><div class="cal">${grid}</div>${detail}</div></section>
   <section class="block"><div class="bhead"><h2>${esc(heatTitle)}</h2><span class="bn">${dates.length} training day${dates.length>1?"s":""} total</span></div>
     <div class="card"><svg class="heat" viewBox="0 0 ${W} ${H}" role="img" aria-label="Training days over the last 12 weeks">${lab}${cells}</svg>
@@ -803,7 +874,7 @@ const wkey=m=>"week-"+m;
 function weekRec(m){ const r=((logs[wkey(m)]||[])[0])||{}; r.done=r.done||{}; r.extra=r.extra||{}; return r; }
 function gymLogged(dateIso){ // which strength workouts were logged on this exact date
   const ids=new Set((logs.sessions||[]).filter(x=>x.d===dateIso).map(x=>x.day));
-  DAYS.forEach(d=>{ if(d.blocks.some(b=>b.items.some(i=>i.type && !i.id.startsWith("wu-") && (logs[i.id]||[]).some(e=>e.d===dateIso)))) ids.add(d.id); });
+  statDays().forEach(d=>{ if(d.blocks.some(b=>b.items.some(i=>i.type && !i.id.startsWith("wu-") && (logs[i.id]||[]).some(e=>e.d===dateIso)))) ids.add(d.id); });
   return [...ids];
 }
 function rowsFor(m,di,dateIso){
@@ -928,7 +999,7 @@ function renderDiet(){
   const kgs=w.filter(x=>x.kg!=null), toGo=last&&last.kg!=null?Math.round((last.kg-GOAL.kg)*10)/10:null;
   const wspark = kgs.length>=2 ? spark({type:"time"}, kgs.map(x=>({sec:x.kg}))) : "";
   main.innerHTML=`
-  <div class="sesshead"><h2>Diet</h2><label>Date<input type="date" data-ddate value="${esc(d)}"></label>${d!==td?`<button class="discard" data-dtoday>Back to today</button>`:""}</div>
+  <div class="sesshead"><h2>Diet</h2><div class="calhead" style="gap:6px;margin:0"><button data-dstep="-1" aria-label="Previous day">‹</button><label style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px">Date<input type="date" data-ddate value="${esc(d)}"></label><button data-dstep="1" aria-label="Next day">›</button></div>${d!==td?`<button class="discard" data-dtoday>Back to today</button>`:""}</div>
   <div class="card"><div class="week">${strip}</div></div>
   <section class="block"><div class="bhead"><h2>${esc(dn)}</h2><span class="bn">Pick the day type</span></div>
     <div class="seg">${Object.entries(DIET).map(([k,v])=>`<button data-dtype="${k}" class="${k===type?"on":""}">${esc(v.label)}</button>`).join("")}</div>
@@ -961,6 +1032,7 @@ async function dietClick(e){
   const t=e.target; const d=dietDate||today();
   const dd=t.closest("[data-dday]"); if(dd){ dietDate=dd.dataset.dday; renderDiet(); return true; }
   if(t.closest("[data-dtoday]")){ dietDate=today(); renderDiet(); return true; }
+  const st=t.closest("[data-dstep]"); if(st){ const x=parse(d); x.setDate(x.getDate()+(+st.dataset.dstep)); dietDate=iso(x); renderDiet(); return true; }
   const ty=t.closest("[data-dtype]"); if(ty){ const r=dayRec(d)||{}; r.type=ty.dataset.dtype; await saveDay(d,r); renderDiet(); return true; }
   const ml=t.closest("[data-meal]"); if(ml){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.meals=r.meals||{}; r.meals[ml.dataset.meal]=!r.meals[ml.dataset.meal]; await saveDay(d,r); renderDiet(); return true; }
   const hb=t.closest("[data-habit]"); if(hb){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.habits=r.habits||{}; r.habits[hb.dataset.habit]=!r.habits[hb.dataset.habit]; await saveDay(d,r); renderDiet(); return true; }
@@ -968,11 +1040,38 @@ async function dietClick(e){
   if(t.closest("[data-ics]")){ await downloads.save({filename:"sunday-weigh-in.ics", data:icsFile(), type:"text/calendar"}); return true; }
   return false;
 }
-function findItem(id){ for(const d of DAYS) for(const b of d.blocks) for(const i of b.items) if(i.id===id) return i; }
+function activitiesOn(dIso){ const m=iso(monday(parse(dIso))), di=(parse(dIso).getDay()+6)%7; return rowsFor(m,di,dIso).filter(x=>x.done && x.k!=="gym"); }
+function dietSummary(d){
+  const r=dayRec(d); if(!r || (!Object.values(r.meals||{}).some(Boolean) && !Object.values(r.habits||{}).some(Boolean))) return null;
+  const type=r.type||defaultType(d), pl=DIET[type], meals=r.meals||{}, hab=r.habits||{}, hs=HABITS[type==="fast"?"fast":"base"];
+  const eaten=pl.meals.filter(m=>meals[m.id]), tk=pl.meals.reduce((a,m)=>a+m.k,0), tp=pl.meals.reduce((a,m)=>a+m.p,0);
+  const k=eaten.reduce((a,m)=>a+m.k,0), pr=eaten.reduce((a,m)=>a+m.p,0), md=eaten.length, mt=pl.meals.length, rd=hs.filter(([h])=>hab[h]).length, rt=hs.length;
+  const score=(md/mt+rd/rt)/2, verdict=score>=0.9?"On plan":score>=0.6?"Mostly":"Off plan";
+  return {type,label:pl.full,k,p:pr,tk,tp,md,mt,rd,rt,score,verdict,note:r.note};
+}
+const VCOL={"On plan":"var(--new)","Mostly":"var(--court)","Off plan":"var(--danger)"};
+function statsExtras(){
+  const td=today(), wk=iso(monday(parse(td))), cnt={tennis:0,run:0,serve:0,ladder:0,rest:0};
+  for(let di=0;di<7;di++){ const x=parse(wk); x.setDate(x.getDate()+di); const k=iso(x); if(k>td) break; rowsFor(wk,di,k).forEach(r=>{ if(r.done && cnt[r.k]!=null) cnt[r.k]++; }); }
+  const act=`<section class="block"><div class="bhead"><h2>This week on court</h2><span class="bn">From the Week tab</span></div>
+    <div class="kpis k4"><div class="kpi"><div class="big">${cnt.tennis}<small>/3</small></div><div class="lbl">Tennis</div></div><div class="kpi"><div class="big">${cnt.run}<small>/3</small></div><div class="lbl">Runs</div></div><div class="kpi"><div class="big">${cnt.serve}<small>/3</small></div><div class="lbl">Serves</div></div><div class="kpi"><div class="big">${cnt.ladder}<small>/2</small></div><div class="lbl">Drills</div></div></div></section>`;
+  const rows=[]; let n=0, sk=0, sp=0, on=0;
+  for(let i=0;i<7;i++){ const x=parse(td); x.setDate(x.getDate()-i); const k=iso(x), ds=dietSummary(k);
+    if(ds){ n++; sk+=ds.k; sp+=ds.p; if(ds.verdict==="On plan") on++; }
+    rows.push(`<li><span class="d">${esc(x.toLocaleDateString(undefined,{weekday:"short",day:"numeric"}))}</span><span class="m">${ds?`${esc(DIET[ds.type].label)} · ${ds.k.toLocaleString()}/${ds.tk.toLocaleString()} kcal · P ${ds.p}/${ds.tp} g<br><span class="k">Meals ${ds.md}/${ds.mt} · rules ${ds.rd}/${ds.rt}${ds.note?` · “${esc(ds.note)}”`:""}</span>`:`<span class="k">Not logged</span>`}</span><span class="r">${ds?`<b style="color:${VCOL[ds.verdict]}">${ds.verdict}</b>`:""}</span></li>`); }
+  const diet=`<section class="block"><div class="bhead"><h2>Diet</h2><span class="bn">Last 7 days</span></div>
+    <div class="kpis"><div class="kpi"><div class="big">${n?Math.round(sk/n).toLocaleString():"–"}</div><div class="lbl">Avg kcal / day</div></div><div class="kpi"><div class="big">${n?Math.round(sp/n):"–"}<span style="font-size:18px"> g</span></div><div class="lbl">Avg protein</div></div><div class="kpi"><div class="big">${on}<span style="font-size:18px">/7</span></div><div class="lbl">On-plan days</div></div></div>
+    <div class="card"><ul class="rows">${rows.join("")}</ul><p class="hkey">Calories and protein come from the plan for each meal you tick. “On plan” = all meals eaten and all daily rules hit; “Mostly” = at least 60%.</p></div></section>`;
+  return act+diet;
+}
+function findItem(id){ for(const d of DAYS) for(const b of d.blocks) for(const i of b.items) if(i.id===id) return i; for(const k in ARCHIVE) for(const i of ARCHIVE[k]) if(i.id===id) return i; }
 
 main.addEventListener("click", async e=>{
   if(location.hash==="#diet"){ await dietClick(e); return; }
   if(["","#","#week"].includes(location.hash)){ await weekClick(e); return; }
+  const edb=e.target.closest("[data-edit]"); if(edb){ await editItem(edb.dataset.edit); return; }
+  const adb=e.target.closest("[data-addex]"); if(adb){ await addExercise(+adb.dataset.addex); return; }
+  const rsb=e.target.closest("[data-restore]"); if(rsb){ await restoreItem(rsb.dataset.restore); return; }
   const cd=e.target.closest("[data-date]");
   if(cd){ selDate=cd.dataset.date; const d=parse(selDate); if(d.getMonth()!==calMonth.getMonth()){ calMonth=new Date(d.getFullYear(),d.getMonth(),1); } renderStats(); return; }
   const cn=e.target.closest("[data-cal]");
