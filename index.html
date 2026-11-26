@@ -686,7 +686,7 @@ function renderSession(day){
   if(!dr){ dr={d:today(), start:Date.now(), v:{}, done:{}, note:""}; saveDraft(day.id,dr); }
   dr.done ||= {};
   const all=sessItems(day);
-  const doneBtn = item => `<button class="markdone ${dr.done[item.id]?"on":""}" data-mark="${esc(item.id)}">${dr.done[item.id]?"Done ✓":"Mark complete"}</button>`;
+  const doneBtn = item => `<button class="markdone ${dr.done[item.id]?"on":""}" data-mark="${esc(item.id)}">${dr.done[item.id]?"Done ✓ · Undo":"Mark complete"}</button>`;
   const vlink = item => { const vd=item.v[0]; return `<a class="mini" href="${esc(vd.url)}" target="_blank" rel="noopener">${vd.url.includes("search_query")?"Demo search":"Video"}</a>`; };
   const blocks=day.blocks.map(b=>`<section class="block"><div class="bhead"><h2>${esc(b.h)}</h2><span class="bn">${esc(b.bn)}</span></div>`+b.items.map(item=>{
     const cls=isDone(dr,item)?"done":"";
@@ -719,7 +719,7 @@ main.addEventListener("click", e=>{
   const day=currentDay(), dr=loadDraft(day.id); if(!dr) return;
   dr.done ||= {}; const id=m.dataset.mark; dr.done[id]=!dr.done[id];
   saveDraft(day.id,dr);
-  m.classList.toggle("on",dr.done[id]); m.textContent=dr.done[id]?"Done ✓":"Mark complete";
+  m.classList.toggle("on",dr.done[id]); m.textContent=dr.done[id]?"Done ✓ · Undo":"Mark complete";
   const item=findItem(id); m.closest("[data-sx]").classList.toggle("done",isDone(dr,item));
   updateCounts(day,dr);
 });
@@ -1091,11 +1091,12 @@ function renderDiet(){
   <section class="block"><div class="bhead"><h2>${esc(dn)}</h2><span class="bn">Pick the day type</span></div>
     <div class="seg">${Object.entries(DIET).map(([k,v])=>`<button data-dtype="${k}" class="${k===type?"on":""}">${esc(v.label)}</button>`).join("")}</div>
     <div class="kpis"><div class="kpi"><div class="big">${got.k.toLocaleString()}</div><div class="lbl">of ${tot.k.toLocaleString()} kcal</div></div><div class="kpi"><div class="big">${got.p}<span style="font-size:18px"> g</span></div><div class="lbl">of ${tot.p} g protein</div></div><div class="kpi"><div class="big">${eaten.length}/${plan.meals.length}</div><div class="lbl">Meals done</div></div></div>
+    <div class="csvbar">${eaten.length<plan.meals.length?`<button class="export" data-dall type="button">Mark all meals eaten</button>`:""}${(Object.values(meals).some(Boolean)||Object.values(hab).some(Boolean)||rec.note)?`<button class="export" data-dclear type="button" style="border-color:var(--line);color:var(--muted)">Clear this day</button>`:""}</div>
     <p class="daynote">${esc(plan.full)}. ${esc(plan.note)}</p>
-    ${plan.meals.map(m=>`<article class="ex ${meals[m.id]?"done":""}"><div class="code">${meals[m.id]?"✓":esc(m.id==="fa"?"F":m.name[0])}</div><h3 class="name">${esc(m.name)}</h3><div class="rx">${esc(m.what)}</div>${m.k?`<div class="stats"><span>${m.k} kcal</span><span class="k">P ${m.p} · C ${m.c} · F ${m.f} g</span></div>`:""}<button class="markdone ${meals[m.id]?"on":""}" data-meal="${m.id}">${meals[m.id]?(m.id==="fa"?"Fasted ✓":"Eaten ✓"):(m.id==="fa"?"Mark fast done":"Mark eaten")}</button></article>`).join("")}
+    ${plan.meals.map(m=>`<article class="ex ${meals[m.id]?"done":""}"><div class="code">${meals[m.id]?"✓":esc(m.id==="fa"?"F":m.name[0])}</div><h3 class="name">${esc(m.name)}</h3><div class="rx">${esc(m.what)}</div>${m.k?`<div class="stats"><span>${m.k} kcal</span><span class="k">P ${m.p} · C ${m.c} · F ${m.f} g</span></div>`:""}<button class="markdone ${meals[m.id]?"on":""}" data-meal="${m.id}">${meals[m.id]?(m.id==="fa"?"Fasted ✓ · Undo":"Eaten ✓ · Undo"):(m.id==="fa"?"Mark fast done":"Mark eaten")}</button></article>`).join("")}
   </section>
   <section class="block"><div class="bhead"><h2>Daily rules</h2><span class="bn">Tick what you hit</span></div>
-    ${habits.map(([k,l])=>`<article class="ex ${hab[k]?"done":""}" style="padding-left:56px"><div class="code">${hab[k]?"✓":"•"}</div><h3 class="name" style="font-size:15px">${esc(l)}</h3><button class="markdone ${hab[k]?"on":""}" data-habit="${k}">${hab[k]?"Done ✓":"Mark done"}</button></article>`).join("")}
+    ${habits.map(([k,l])=>`<article class="ex ${hab[k]?"done":""}" style="padding-left:56px"><div class="code">${hab[k]?"✓":"•"}</div><h3 class="name" style="font-size:15px">${esc(l)}</h3><button class="markdone ${hab[k]?"on":""}" data-habit="${k}">${hab[k]?"Done ✓ · Undo":"Mark done"}</button></article>`).join("")}
     <div class="card" style="margin-top:10px"><div class="fields"><label class="wide">Diet note<input type="text" data-dnote maxlength="200" value="${esc(rec.note||"")}" placeholder="Swaps, cravings, eating out…"></label></div></div>
   </section>
   <section class="block" id="weighin"><div class="bhead"><h2>Sunday weigh-in</h2><span class="bn">Weekly ritual: fasted, before breakfast</span></div>
@@ -1121,6 +1122,8 @@ async function dietClick(e){
   if(t.closest("[data-dtoday]")){ dietDate=today(); renderDiet(); return true; }
   const st=t.closest("[data-dstep]"); if(st){ const x=parse(d); x.setDate(x.getDate()+(+st.dataset.dstep)); dietDate=iso(x); renderDiet(); return true; }
   const ty=t.closest("[data-dtype]"); if(ty){ const r=dayRec(d)||{}; r.type=ty.dataset.dtype; await saveDay(d,r); renderDiet(); return true; }
+  if(t.closest("[data-dall]")){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.meals=r.meals||{}; DIET[r.type].meals.forEach(m=>r.meals[m.id]=true); await saveDay(d,r); renderDiet(); return true; }
+  if(t.closest("[data-dclear]")){ if(!(await ask(`Clear ${fmtDate(d)}? This unticks all meals and daily rules and removes the diet note for that day.`,"Clear day","Keep"))) return true; logs[dkey(d)]=[]; try{ await store.save(dkey(d)); }catch(e){} renderDiet(); return true; }
   const ml=t.closest("[data-meal]"); if(ml){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.meals=r.meals||{}; r.meals[ml.dataset.meal]=!r.meals[ml.dataset.meal]; await saveDay(d,r); renderDiet(); return true; }
   const hb=t.closest("[data-habit]"); if(hb){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.habits=r.habits||{}; r.habits[hb.dataset.habit]=!r.habits[hb.dataset.habit]; await saveDay(d,r); renderDiet(); return true; }
   const wd=t.closest("[data-wdel]"); if(wd){ if(!(await ask("Delete this weigh-in?","Delete"))) return true; logs.weighins=(logs.weighins||[]).filter(x=>x.t!==+wd.dataset.wdel); await store.save("weighins"); renderDiet(); return true; }
