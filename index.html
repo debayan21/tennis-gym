@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Tennis Gym">
 <meta name="theme-color" content="#2457A6">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-512.png">
@@ -46,7 +47,7 @@ button{font:inherit;color:inherit}
 header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--court);color:#fff;padding:14px 16px 0}
 .title{font-family:"Barlow Condensed",Arial Narrow,sans-serif;font-weight:700;font-size:26px;line-height:1;letter-spacing:.01em;margin:0}
 .sub{font-size:13px;opacity:.85;margin:4px 0 12px}
-nav.days{display:grid;grid-template-columns:repeat(4,1fr);gap:0;max-width:720px}
+nav.days{display:grid;grid-template-columns:repeat(5,1fr);gap:0;max-width:720px}
 nav.days a{display:block;text-decoration:none;padding:8px 6px 10px;border-bottom:4px solid transparent;text-align:left}
 nav.days a .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:22px;line-height:1}
 nav.days a .f{font-size:13px;opacity:.8}
@@ -164,6 +165,23 @@ section.block{margin-top:18px}
 .modal button{font-weight:700;padding:10px 16px;border-radius:999px;cursor:pointer;font-size:15px}
 .modal .no{background:transparent;border:2px solid var(--line)}
 .modal .yes{background:var(--court);color:#fff;border:2px solid var(--court)}
+.authbox h2{font-family:"Barlow Condensed",sans-serif;font-size:26px;margin:0 0 6px;line-height:1.05}
+.authbox p{font-size:14px;color:var(--muted);margin:0 0 12px}
+.authbox label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);margin-bottom:10px}
+.authbox input{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
+.authbox .msg{display:block;margin:10px 0 0;color:var(--danger);min-height:1em}
+.modal[hidden]{display:none}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.week button{border:0;border-radius:8px;background:var(--bg);padding:6px 0;display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;font-size:12px;color:var(--muted)}
+.week button b{font-size:16px;color:var(--ink);font-variant-numeric:tabular-nums}
+.week button.has{background:var(--court-soft)}
+.week button.today{box-shadow:inset 0 0 0 2px var(--ball)}
+.week button.sel{outline:2px solid var(--ink);outline-offset:1px}
+.week .vt{font-size:10px;font-weight:700;color:var(--court);min-height:12px}
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0}
+.seg button{border:2px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-weight:600;font-size:14px;cursor:pointer}
+.seg button.on{background:var(--court);border-color:var(--court);color:#fff}
+.ritual .sum{font-size:14px;color:var(--ink);margin:0 0 10px}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -193,8 +211,17 @@ footer p{margin:6px 0}
   <nav class="days" id="nav"></nav>
 </header>
 <main id="main"></main>
+<div id="auth" class="modal" hidden><form class="box authbox" id="authForm" novalidate>
+  <h2>Sign in to save your workouts</h2>
+  <p>Your log is stored in your account, so it’s safe and syncs between phone and laptop. Logging still works offline and syncs when you’re back online.</p>
+  <label>Email<input type="email" name="email" autocomplete="username" required></label>
+  <label>Password<input type="password" name="pw" autocomplete="current-password" minlength="6" required></label>
+  <div class="row"><button type="button" class="no" id="signupBtn">Create account</button><button type="submit" class="yes">Sign in</button></div>
+  <p class="msg" id="authMsg" role="status"></p>
+</form></div>
 <footer>
   <p id="mode">Loading your log…</p>
+  <p><button class="export" id="signoutBtn" type="button" hidden>Sign out</button></p>
   <p><button class="export" id="backupBtn" type="button">Back up log</button> <button class="export" id="restoreBtn" type="button">Restore backup</button><input type="file" id="restoreFile" accept="application/json,.json" hidden></p>
   <p>Dark buttons are the official Theory of Motion demos from the Blueprint. Outlined buttons are other coaches’ demos or a YouTube search, for moves the Blueprint doesn’t include.</p>
 </footer>
@@ -334,35 +361,72 @@ function localStore(){
   try{ logs = JSON.parse(localStorage.getItem(LS)||"{}")||{}; }catch(e){ logs={}; }
   return { kind:"local", async save(){ try{ localStorage.setItem(LS, JSON.stringify(logs)); }catch(e){ throw new Error("Couldn’t save on this device."); } } };
 }
+/* ---------- cloud sync (Supabase) ---------- */
+const SB_URL="https://gpvicetrwtpvbkmjiyrd.supabase.co", SB_KEY="sb_publishable_LbDQJM3i9rji46mZv05kfw_hnoJcRRA";
+let sb=null, user=null, loginDone=null;
+const PEND="tom-tennis-pending-v1";
+const pend={ get(){ try{ return new Set(JSON.parse(localStorage.getItem(PEND)||"[]")); }catch(e){ return new Set(); } }, set(x){ try{ localStorage.setItem(PEND, JSON.stringify([...x])); }catch(e){} } };
+function cacheLocal(){ try{ localStorage.setItem(LS, JSON.stringify(logs)); }catch(e){} }
+async function pushDoc(id){
+  const {error}=await sb.from("workout_docs").upsert({user_id:user.id, doc_id:id, entries:logs[id]||[], updated_at:new Date().toISOString()},{onConflict:"user_id,doc_id"});
+  if(error) throw error;
+}
+let flushing=false;
+async function flush(){
+  if(!user || flushing) return; flushing=true;
+  try{ const p=pend.get(); for(const id of [...p]){ try{ await pushDoc(id); p.delete(id); pend.set(p); }catch(e){ break; } } }
+  finally{ flushing=false; setMode(); }
+}
+function cloudStore(){ return { kind:"cloud", async save(id){ cacheLocal(); const p=pend.get(); (id?[id]:Object.keys(logs)).forEach(k=>p.add(k)); pend.set(p); await flush(); } }; }
+function mergeDoc(k,a,b){
+  if(k.startsWith("draft-")||k.startsWith("diet-")){ const x=a[0], y=b[0]; if(!x) return b; if(!y) return a; return (x.u||0)>=(y.u||0)?a:b; }
+  const m=new Map(); [...a,...b].forEach(e=>m.set(e.t,e)); return [...m.values()];
+}
+async function loadCloud(){
+  const {data,error}=await sb.from("workout_docs").select("doc_id,entries");
+  if(error) throw error;
+  const cloud={}; data.forEach(r=>{ cloud[r.doc_id]=Array.isArray(r.entries)?r.entries:[]; });
+  const p=pend.get(), LK="tom-tennis-linked-"+user.id;
+  if(!localStorage.getItem(LK)){ Object.keys(logs).forEach(k=>{ if((logs[k]||[]).length){ cloud[k]=mergeDoc(k,cloud[k]||[],logs[k]); p.add(k); } }); try{ localStorage.setItem(LK,"1"); }catch(e){} }
+  else p.forEach(k=>{ if(k in logs) cloud[k]=logs[k]; });
+  logs=cloud; pend.set(p); cacheLocal();
+}
+function setMode(){
+  const m=document.getElementById("mode"), so=document.getElementById("signoutBtn");
+  if(user){ const n=pend.get().size; m.textContent=`Signed in as ${user.email}. `+(n?`${n} change${n>1?"s":""} waiting to sync (will send when you’re online).`:"Everything is synced to your account."); so.hidden=false; }
+  else { m.textContent="Not signed in. Your log is saved on this device only."; so.hidden=true; }
+}
+function showLogin(){ document.getElementById("auth").hidden=false; return new Promise(r=>{ loginDone=r; }); }
+async function doAuth(kind){
+  const f=document.getElementById("authForm"), m=document.getElementById("authMsg");
+  const email=f.elements.email.value.trim(), password=f.elements.pw.value;
+  if(!email || password.length<6){ m.textContent="Enter your email and a password of at least 6 characters."; return; }
+  m.textContent = kind==="up" ? "Creating your account…" : "Signing in…";
+  const r = kind==="up" ? await sb.auth.signUp({email,password}) : await sb.auth.signInWithPassword({email,password});
+  if(r.error){ m.textContent=r.error.message; return; }
+  if(!r.data.session){ m.textContent="Check your email and tap the confirm link, then come back here and tap Sign in."; return; }
+  user=r.data.session.user; store=cloudStore();
+  try{ await loadCloud(); }catch(e){ m.textContent="Signed in, but couldn’t load your log. Check your connection."; }
+  document.getElementById("auth").hidden=true; m.textContent=""; flush(); render();
+  if(loginDone){ loginDone(); loginDone=null; }
+}
 async function initStore(){
   downloads = { async save({filename,data,type}){ const b=new Blob([data],{type:type||"text/csv"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000); } };
   try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){}
-  store = localStore(); return;
-  let db=null, uid=null;
-  try{
-    if(window.claude && typeof window.claude.use==="function"){
-      const [u,d,dl] = await Promise.all([window.claude.use("user"), window.claude.use("db"), window.claude.use("downloads")]);
-      downloads=dl;
-      db=d; uid = u ? await u.id() : null;
-    }
-  }catch(e){ db=null; }
-  if(db && uid){
-    const col = db.collection("data/users/"+uid);
-    try{
-      const snap = await Promise.race([col.get(), new Promise((_,r)=>setTimeout(()=>r(new Error("timeout")),10000))]);
-      logs={};
-      snap.docs.forEach(doc=>{ if(doc.exists){ const b=doc.data(); if(b && Array.isArray(b.entries)) logs[doc.id]=b.entries.map(x=>({...x})); } });
-      store = { kind:"account", async save(id){ await col.doc(id).set({entries: logs[id]||[]}); } };
-      return;
-    }catch(e){ /* fall through */ }
-  }
   store = localStore();
+  if(!window.supabase || SB_URL.startsWith("__")) return;
+  sb = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, storageKey:"tom-tennis-auth"}});
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session){ await showLogin(); return; }
+  user=session.user; store=cloudStore();
+  try{ await loadCloud(); }catch(e){ /* offline: keep the cached log, changes queue up */ }
+  flush();
 }
 
 /* ---------- render ---------- */
 const nav=document.getElementById("nav"), main=document.getElementById("main");
 const open = new Set();
-function currentDay(){ const h=location.hash.slice(1); if(h==="stats") return null; return DAYS.find(d=>d.id===h || "log-"+d.id===h) || DAYS[0]; }
+function currentDay(){ const h=location.hash.slice(1); if(h==="stats"||h==="diet") return null; return DAYS.find(d=>d.id===h || "log-"+d.id===h) || DAYS[0]; }
 const inSession = () => location.hash.slice(1).startsWith("log-");
 
 function videoLinks(item){
@@ -402,9 +466,9 @@ function itemHTML(item){
 function render(){
   const day=currentDay();
   nav.innerHTML=DAYS.map(d=>`<a href="#${d.id}" ${day&&d.id===day.id?'aria-current="page"':""}><div class="n">${d.n}</div><div class="f">${d.f}</div></a>`).join("")+
-    `<a href="#stats" ${!day?'aria-current="page"':""}><div class="n">Stats</div><div class="f">Progress</div></a>`;
+    `<a href="#diet" ${location.hash==="#diet"?'aria-current="page"':""}><div class="n">Diet</div><div class="f">Meals</div></a><a href="#stats" ${!day&&location.hash!=="#diet"?'aria-current="page"':""}><div class="n">Stats</div><div class="f">Progress</div></a>`;
   clearInterval(timerId);
-  if(!day){ renderStats(); return; }
+  if(!day){ if(location.hash==="#diet") renderDiet(); else renderStats(); return; }
   if(inSession()){ renderSession(day); return; }
   const counts={new:0,changed:0,same:0};
   day.blocks.forEach(b=>b.items.forEach(i=>counts[i.st]++));
@@ -480,7 +544,7 @@ function renderSession(day){
   document.getElementById("progBtn").onclick=async()=>{
     const d=loadDraft(day.id)||dr, b=document.getElementById("progBtn"), note=document.getElementById("savedNote");
     b.disabled=true;
-    try{ await pushDraft(day.id,d); note.textContent=(store.kind==="account"?"Progress saved to your account at ":"Progress saved on this device at ")+new Date(d.u).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+". Pick up from any day tab with “Resume workout”."; }
+    try{ await pushDraft(day.id,d); note.textContent=(store.kind!=="local"?"Progress saved to your account at ":"Progress saved on this device at ")+new Date(d.u).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+". Pick up from any day tab with “Resume workout”."; }
     catch(e){ note.textContent="Couldn’t reach your account. Progress is still kept on this device."; }
     b.disabled=false;
   };
@@ -494,6 +558,11 @@ main.addEventListener("click", e=>{
   m.classList.toggle("on",dr.done[id]); m.textContent=dr.done[id]?"Done ✓":"Mark complete";
   const item=findItem(id); m.closest("[data-sx]").classList.toggle("done",isDone(dr,item));
   updateCounts(day,dr);
+});
+main.addEventListener("change", async e=>{
+  if(location.hash!=="#diet") return; const t=e.target;
+  if(t.hasAttribute("data-ddate")){ dietDate=t.value||today(); renderDiet(); }
+  else if(t.hasAttribute("data-dnote")){ const d=dietDate||today(), r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.note=t.value.trim(); await saveDay(d,r); }
 });
 main.addEventListener("input", e=>{
   if(!inSession()) return;
@@ -674,9 +743,128 @@ function renderStats(){
     try{ await downloads.save({filename:"tennis-gym-log-"+iso(now)+".csv", data:lines.join("\n")}); }catch(err){ /* viewer declined */ }
   };
 }
+
+/* ---------- diet ---------- */
+const DIET = {
+  strength:{label:"Strength",full:"Strength day",note:"Cooked weights for chicken; dry weight for pasta.",meals:[
+    {id:"bf",name:"Breakfast, post-gym",what:"Oats 70 g · soy milk 150 ml + water 150 ml · 1 scoop Cosmix · seeds 15 g + almonds 15 g · papaya 200 g",k:695,p:47,c:78,f:24},
+    {id:"lu",name:"Lunch",what:"Quinoa-jowar pasta 50 g dry (~115 g cooked) · chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:645,p:40,c:58,f:30},
+    {id:"sn",name:"Snack, ~4 pm",what:"Mixed nuts + almonds 20 g",k:120,p:4,c:4,f:10},
+    {id:"di",name:"Dinner, by 7 pm",what:"Chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 15 g",k:410,p:34,c:12,f:25}]},
+  serve:{label:"+ Serve",full:"Strength + serve hour",note:"Same as a strength day, with more lunch pasta so carbs land ~3 hours before you play.",meals:[
+    {id:"bf",name:"Breakfast, post-gym",what:"Oats 70 g · soy milk 150 ml + water 150 ml · 1 scoop Cosmix · seeds 15 g + almonds 15 g · papaya 200 g",k:695,p:47,c:78,f:24},
+    {id:"lu",name:"Lunch",what:"Quinoa-jowar pasta 75 g dry (~170 g cooked) · chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:735,p:43,c:76,f:30},
+    {id:"sn",name:"Snack, ~4 pm",what:"Mixed nuts + almonds 20 g",k:120,p:4,c:4,f:10},
+    {id:"di",name:"Dinner, by 7 pm",what:"Chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 15 g",k:410,p:34,c:12,f:25}]},
+  tennis:{label:"Tennis",full:"Tennis day",note:"Breakfast is the post-training carb meal with the Cosmix scoop; dinner is carb-free.",meals:[
+    {id:"bf",name:"Breakfast, post-training",what:"Oats 100 g · soy milk 150 ml + water 150 ml · 1 scoop Cosmix · seeds 15 g + almonds 15 g · papaya 200 g",k:825,p:51,c:98,f:27},
+    {id:"lu",name:"Lunch",what:"Quinoa-jowar pasta 70 g dry (~160 g cooked) · chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:720,p:42,c:76,f:30},
+    {id:"sn",name:"Snack, ~4 pm",what:"Mixed nuts + almonds 30 g",k:180,p:5,c:5,f:15},
+    {id:"di",name:"Dinner, by 7 pm",what:"Chicken breast 80 g cooked · cheese 20 g · veg 250 g · olive oil 20 g",k:460,p:33,c:12,f:29}]},
+  fast:{label:"Sunday fast",full:"Sunday fasting day",note:"18-hour fast (Saturday dinner by 7 pm → first meal 1 pm). Walking only, no gym or hard tennis while fasted. Match on Sunday? Eat the tennis plan and move the fast.",meals:[
+    {id:"fa",name:"Wake → 1 pm: fast",what:"1 L water with a pinch of salt by 10 am, keep sipping; black coffee or tea is fine. 25-min easy fasted walk",k:0,p:0,c:0,f:0},
+    {id:"lu",name:"1 pm, break the fast",what:"Quinoa-jowar pasta 60 g dry (~140 g cooked) · chicken breast 120 g cooked · cheese 20 g · cooked veg 250 g · olive oil 20 g",k:750,p:53,c:66,f:31},
+    {id:"sn",name:"~4 pm",what:"Mixed nuts + almonds 20 g",k:120,p:4,c:4,f:10},
+    {id:"di",name:"Dinner, by 7 pm",what:"Chicken breast 120 g cooked · cheese 20 g · veg 250 g · pumpkin seeds 15 g · olive oil 20 g",k:595,p:51,c:14,f:38}]}
+};
+const HABITS = {
+  base:[["water","Water 3–3.5 L, ~2 L of it by 4 pm"],["cutoff","No food after 7 pm"],["weigh","Weighed oats, pasta, nuts, oil and cheese"]],
+  fast:[["water","Water 3 L, most of it by 4 pm"],["cutoff","No food after 7 pm"],["walk","Walking 75–90 min across the day"]]
+};
+const WEIGH_FIELDS=[["kg","Weight (kg)"],["bf","Body fat %"],["fm","Fat mass (kg)"],["lm","Lean mass (kg)"],["vf","Visceral fat"],["waist","Waist at navel (cm)"]];
+const START={d:"2026-11-25",kg:71.5,bf:24.2,fm:17.3,lm:54.2,vf:11,t:1}, GOAL={kg:68,bf:20,lm:54};
+let dietDate=null;
+const dkey=d=>"diet-"+d;
+function dayRec(d){ return ((logs[dkey(d)]||[])[0]) || null; }
+function defaultType(d){ return parse(d).getDay()===0 ? "fast" : "strength"; }
+async function saveDay(d,rec){ rec.u=Date.now(); rec.d=d; logs[dkey(d)]=[rec]; try{ await store.save(dkey(d)); }catch(e){} }
+function weighIns(){ return [START, ...(logs.weighins||[])].sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.t-b.t); }
+function fmt1(v){ return v==null?"–":(Math.round(v*10)/10).toString(); }
+function delta(a,b,unit,goodDown=true){ if(a==null||b==null) return ""; const x=Math.round((a-b)*10)/10; if(!x) return `<span class="k">±0</span>`; const good=goodDown?x<0:x>0; return `<span style="color:var(${good?"--new":"--danger"})">${x>0?"+":""}${x}${unit}</span>`; }
+function weighAdvice(w){
+  const real=w.filter(x=>x.kg!=null); if(real.length<2) return "Log your first Sunday weigh-in to start the weekly check.";
+  const a=real[real.length-1], b=[...real].reverse().find(x=>(parse(a.d)-parse(x.d))/864e5>=5);
+  if(!b) return "Weekly pace shows once two weigh-ins are at least 5 days apart. Weigh in every Sunday, fasted.";
+  const days=(parse(a.d)-parse(b.d))/864e5, rate=(b.kg-a.kg)/days*7;
+  const msgs=[`Pace since ${fmtDate(b.d)}: ${rate>=0?"−":"+"}${fmt1(Math.abs(rate))} kg/week (target 0.4–0.5).`];
+  const c=[...real].reverse().find(x=>(parse(a.d)-parse(x.d))/864e5>=12);
+  if(rate>0.55) msgs.push("Losing faster than 0.5 kg/week: add 20 g oats.");
+  else if(c && c.kg-a.kg<=0.1) msgs.push("Stalled for 2 weeks: drop 10 g oil from dinner.");
+  else msgs.push("On track. Keep the plan as is.");
+  msgs.push("Strength down 2 weeks in a row? Add ~150 kcal of carbs at breakfast.");
+  return msgs.join(" ");
+}
+function icsFile(){
+  const now=new Date(), nx=new Date(now); nx.setDate(now.getDate()+((7-now.getDay())%7)); const ymd=iso(nx).replace(/-/g,"");
+  const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
+  return ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Tennis Gym//EN","CALSCALE:GREGORIAN","BEGIN:VEVENT","UID:tennis-gym-weighin@debayan21.github.io","DTSTAMP:"+stamp,
+    "DTSTART;TZID=Asia/Kolkata:"+ymd+"T080000","DTEND;TZID=Asia/Kolkata:"+ymd+"T081500","RRULE:FREQ=WEEKLY;BYDAY=SU",
+    "SUMMARY:Sunday weigh-in ritual","DESCRIPTION:Fasted\\, after the bathroom: weight\\, body fat %\\, fat mass\\, lean mass\\, visceral fat\\, waist at the navel. Log it in Tennis Gym → Diet: https://debayan21.github.io/tennis-gym/#diet",
+    "URL:https://debayan21.github.io/tennis-gym/#diet","BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:Sunday weigh-in","TRIGGER:PT0M","END:VALARM","END:VEVENT","END:VCALENDAR"].join("\r\n");
+}
+function renderDiet(){
+  const td=today(); if(!dietDate) dietDate=td;
+  const d=dietDate, rec=dayRec(d)||{}, type=rec.type||defaultType(d), plan=DIET[type], meals=rec.meals||{}, hab=rec.habits||{};
+  const habits=HABITS[type==="fast"?"fast":"base"];
+  const eaten=plan.meals.filter(m=>meals[m.id]), tot=plan.meals.reduce((a,m)=>({k:a.k+m.k,p:a.p+m.p}),{k:0,p:0}), got=eaten.reduce((a,m)=>({k:a.k+m.k,p:a.p+m.p}),{k:0,p:0});
+  const dn=parse(d).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"short"});
+  const isSun=parse(d).getDay()===0;
+  // week strip (Mon–Sun)
+  const mon=monday(parse(d)); let strip="";
+  for(let i=0;i<7;i++){ const x=new Date(mon); x.setDate(mon.getDate()+i); const k=iso(x), r=dayRec(k), tp=r&&DIET[r.type||defaultType(k)], n=r?Object.values(r.meals||{}).filter(Boolean).length:0, of=tp?tp.meals.length:4;
+    strip+=`<button data-dday="${k}" class="${k===d?"sel ":""}${k===td?"today ":""}${n?"has":""}" aria-label="${esc(fmtDate(k))}"><span>${["M","T","W","T","F","S","S"][i]}</span><b>${x.getDate()}</b><span class="vt">${n?n+"/"+of:""}</span></button>`; }
+  const w=weighIns(), last=w[w.length-1], prev=w.length>1?w[w.length-2]:null, wkey="weighin";
+  const lastSun=(()=>{ const x=parse(td); x.setDate(x.getDate()-x.getDay()); return iso(x); })();
+  const doneThisWeek=(logs.weighins||[]).some(x=>x.d>=lastSun);
+  const wfields=WEIGH_FIELDS.map(([k,l])=>`<label>${l}<input name="${k}" inputmode="decimal" type="number" step="any" min="0" placeholder="${last&&last[k]!=null?esc(last[k]):""}"></label>`).join("");
+  const wrows=w.slice().reverse().slice(0,10).map((x,i,arr)=>{ const pv=arr[i+1]; return `<li><span class="d">${esc(fmtDate(x.d))}${x===START?"<br>start":""}</span><span class="m">${x.kg!=null?`<b>${fmt1(x.kg)} kg</b> ${pv?delta(x.kg,pv.kg," kg"):""}`:""}${x.bf!=null?`<br><span class="k">BF ${fmt1(x.bf)}% · lean ${fmt1(x.lm)} kg · visc ${fmt1(x.vf)}${x.waist!=null?" · waist "+fmt1(x.waist)+" cm":""}</span>`:(x.waist!=null?`<br><span class="k">waist ${fmt1(x.waist)} cm</span>`:"")}</span>${x!==START?`<button class="del" data-wdel="${x.t}">Delete</button>`:""}</li>`; }).join("");
+  const kgs=w.filter(x=>x.kg!=null), toGo=last&&last.kg!=null?Math.round((last.kg-GOAL.kg)*10)/10:null;
+  const wspark = kgs.length>=2 ? spark({type:"time"}, kgs.map(x=>({sec:x.kg}))) : "";
+  main.innerHTML=`
+  <div class="sesshead"><h2>Diet</h2><label>Date<input type="date" data-ddate value="${esc(d)}"></label>${d!==td?`<button class="discard" data-dtoday>Back to today</button>`:""}</div>
+  <div class="card"><div class="week">${strip}</div></div>
+  <section class="block"><div class="bhead"><h2>${esc(dn)}</h2><span class="bn">Pick the day type</span></div>
+    <div class="seg">${Object.entries(DIET).map(([k,v])=>`<button data-dtype="${k}" class="${k===type?"on":""}">${esc(v.label)}</button>`).join("")}</div>
+    <div class="kpis"><div class="kpi"><div class="big">${got.k.toLocaleString()}</div><div class="lbl">of ${tot.k.toLocaleString()} kcal</div></div><div class="kpi"><div class="big">${got.p}<span style="font-size:18px"> g</span></div><div class="lbl">of ${tot.p} g protein</div></div><div class="kpi"><div class="big">${eaten.length}/${plan.meals.length}</div><div class="lbl">Meals done</div></div></div>
+    <p class="daynote">${esc(plan.full)}. ${esc(plan.note)}</p>
+    ${plan.meals.map(m=>`<article class="ex ${meals[m.id]?"done":""}"><div class="code">${meals[m.id]?"✓":esc(m.id==="fa"?"F":m.name[0])}</div><h3 class="name">${esc(m.name)}</h3><div class="rx">${esc(m.what)}</div>${m.k?`<div class="stats"><span>${m.k} kcal</span><span class="k">P ${m.p} · C ${m.c} · F ${m.f} g</span></div>`:""}<button class="markdone ${meals[m.id]?"on":""}" data-meal="${m.id}">${meals[m.id]?(m.id==="fa"?"Fasted ✓":"Eaten ✓"):(m.id==="fa"?"Mark fast done":"Mark eaten")}</button></article>`).join("")}
+  </section>
+  <section class="block"><div class="bhead"><h2>Daily rules</h2><span class="bn">Tick what you hit</span></div>
+    ${habits.map(([k,l])=>`<article class="ex ${hab[k]?"done":""}" style="padding-left:56px"><div class="code">${hab[k]?"✓":"•"}</div><h3 class="name" style="font-size:15px">${esc(l)}</h3><button class="markdone ${hab[k]?"on":""}" data-habit="${k}">${hab[k]?"Done ✓":"Mark done"}</button></article>`).join("")}
+    <div class="fields" style="margin-top:10px"><label class="wide">Diet note<input type="text" data-dnote maxlength="200" value="${esc(rec.note||"")}" placeholder="Swaps, cravings, eating out…"></label></div>
+  </section>
+  <section class="block" id="weighin"><div class="bhead"><h2>Sunday weigh-in</h2><span class="bn">Weekly ritual: fasted, before breakfast</span></div>
+    <div class="card ritual">
+      <p class="sum">${doneThisWeek?"✓ Done this week.":(parse(td).getDay()===0?"It’s Sunday: weigh in now, fasted, after the bathroom.":"Next weigh-in: Sunday morning.")} ${toGo!=null?`<b>${toGo>0?toGo+" kg to go":"Goal reached"}</b> to ${GOAL.kg} kg.`:""}</p>
+      <form data-wform><div class="fields"><label>Date<input name="d" type="date" value="${esc(td)}"></label>${wfields}</div><button class="save" type="submit">Save weigh-in</button><span class="msg" role="status"></span></form>
+      <p class="sum" style="margin-top:12px">${esc(weighAdvice(w))}</p>
+      ${wspark}
+      <ul class="rows">${wrows}</ul>
+      <button class="export" data-ics type="button">Add Sunday reminder to my calendar</button>
+    </div>
+  </section>
+  <section class="block"><div class="bhead"><h2>Targets</h2><span class="bn">From your diet plan</span></div><div class="card"><ul class="rows">
+    <li><span class="m">Start (25 Nov)</span><span class="r">71.5 kg · 24.2% BF · lean 54.2 kg · visceral 11</span></li>
+    <li><span class="m">Goal</span><span class="r">68 kg · ~20% BF · lean held ~54 kg</span></li>
+    <li><span class="m">Pace</span><span class="r">0.4–0.5 kg/week, ~7 weeks</span></li>
+    <li><span class="m">Protein</span><span class="r">125–131 g training days, ~108 g Sunday; ≤50 g per meal</span></li>
+    <li><span class="m">Floor</span><span class="r">Don’t go below ~1,700 kcal on a lifting day</span></li></ul></div></section>`;
+}
+async function dietClick(e){
+  const t=e.target; const d=dietDate||today();
+  const dd=t.closest("[data-dday]"); if(dd){ dietDate=dd.dataset.dday; renderDiet(); return true; }
+  if(t.closest("[data-dtoday]")){ dietDate=today(); renderDiet(); return true; }
+  const ty=t.closest("[data-dtype]"); if(ty){ const r=dayRec(d)||{}; r.type=ty.dataset.dtype; await saveDay(d,r); renderDiet(); return true; }
+  const ml=t.closest("[data-meal]"); if(ml){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.meals=r.meals||{}; r.meals[ml.dataset.meal]=!r.meals[ml.dataset.meal]; await saveDay(d,r); renderDiet(); return true; }
+  const hb=t.closest("[data-habit]"); if(hb){ const r=dayRec(d)||{}; r.type=r.type||defaultType(d); r.habits=r.habits||{}; r.habits[hb.dataset.habit]=!r.habits[hb.dataset.habit]; await saveDay(d,r); renderDiet(); return true; }
+  const wd=t.closest("[data-wdel]"); if(wd){ if(!(await ask("Delete this weigh-in?","Delete"))) return true; logs.weighins=(logs.weighins||[]).filter(x=>x.t!==+wd.dataset.wdel); await store.save("weighins"); renderDiet(); return true; }
+  if(t.closest("[data-ics]")){ await downloads.save({filename:"sunday-weigh-in.ics", data:icsFile(), type:"text/calendar"}); return true; }
+  return false;
+}
 function findItem(id){ for(const d of DAYS) for(const b of d.blocks) for(const i of b.items) if(i.id===id) return i; }
 
 main.addEventListener("click", async e=>{
+  if(location.hash==="#diet"){ await dietClick(e); return; }
   const cd=e.target.closest("[data-date]");
   if(cd){ selDate=cd.dataset.date; const d=parse(selDate); if(d.getMonth()!==calMonth.getMonth()){ calMonth=new Date(d.getFullYear(),d.getMonth(),1); } renderStats(); return; }
   const cn=e.target.closest("[data-cal]");
@@ -693,6 +881,10 @@ main.addEventListener("click", async e=>{
   }
 });
 main.addEventListener("submit", async e=>{
+  const wf=e.target.closest("[data-wform]");
+  if(wf){ e.preventDefault(); const fd=new FormData(wf), x={d:fd.get("d")||today(), t:Date.now()}; WEIGH_FIELDS.forEach(([k])=>{ const v=num(fd.get(k)); if(v!=null) x[k]=v; });
+    if(Object.keys(x).length<=2){ wf.querySelector(".msg").textContent="Enter at least your weight."; return; }
+    logs.weighins=[...(logs.weighins||[]), x]; await store.save("weighins"); renderDiet(); document.getElementById("weighin").scrollIntoView(); return; }
   const form=e.target.closest("[data-form]"); if(!form) return;
   e.preventDefault();
   const id=form.dataset.form, item=findItem(id), fd=new FormData(form), msg=form.querySelector(".msg");
@@ -713,7 +905,7 @@ window.addEventListener("hashchange",()=>{ render(); window.scrollTo(0,0); });
 
 render();
 initStore().then(()=>{
-  document.getElementById("mode").textContent = "Your log is saved on this phone only. Tap “Back up log” every few weeks and keep the file in iCloud Drive.";
+  setMode();
   render();
 });
 document.getElementById("backupBtn").onclick=async()=>{
@@ -732,6 +924,16 @@ document.getElementById("restoreFile").onchange=async e=>{
   }catch(err){ alert("That file isn’t a Tennis Gym backup."); }
   e.target.value="";
 };
+document.getElementById("authForm").addEventListener("submit",e=>{ e.preventDefault(); doAuth("in"); });
+document.getElementById("signupBtn").onclick=()=>doAuth("up");
+document.getElementById("signoutBtn").onclick=async()=>{
+  const n=pend.get().size;
+  if(!(await ask(n?`${n} change${n>1?"s haven’t":" hasn’t"} synced yet and will be lost. Sign out anyway?`:"Sign out on this device? Your log stays safe in your account.","Sign out"))) return;
+  await sb.auth.signOut(); try{ localStorage.removeItem(LS); localStorage.removeItem(PEND); }catch(e){}
+  location.reload();
+};
+window.addEventListener("online",()=>flush());
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") flush(); });
 if("serviceWorker" in navigator && location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
