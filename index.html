@@ -418,11 +418,12 @@ async function sendCode(){
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ m.textContent="Enter a valid email address."; return; }
   m.textContent="Sending your code…";
   const {error}=await sb.auth.signInWithOtp({email, options:{shouldCreateUser:true}});
-  if(error){ m.textContent=/rate|seconds|limit/i.test(error.message)?"Too many codes requested. Wait a few minutes, then tap “Send a new code”.":error.message; document.getElementById("resendBtn").hidden=false; return; }
+  const limited = error && /rate|seconds|limit|security purposes/i.test(error.message);
+  if(error && !limited){ m.textContent=error.message; document.getElementById("resendBtn").hidden=false; return; }
   codeSentTo=email; f.elements.email.readOnly=true;
   document.getElementById("codeRow").hidden=false; document.getElementById("resendBtn").hidden=false;
   document.getElementById("authGo").textContent="Sign in";
-  m.textContent="Code sent to "+email+". It can take a minute; check spam too.";
+  m.textContent = limited ? "A code was sent to "+email+" in the last minute. Enter the code from your latest email, or wait a minute and tap “Send a new code”." : "Code sent to "+email+". It can take a minute; check spam too.";
   f.elements.code.focus();
 }
 async function doAuth(){
