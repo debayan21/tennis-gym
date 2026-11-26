@@ -242,6 +242,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .datectl input[type=date]{width:150px}
 .discard{align-self:center}
 @media (max-width:480px){.datectl{margin-left:0;width:100%}.datectl input[type=date]{flex:1;width:auto}.datectl b{flex:1;text-align:center}}
+.wadd{display:flex;gap:6px;align-items:center}
+.wadd select{flex:1}
+.wcsv{flex:none;height:34px;border:1px dashed var(--line);background:transparent;color:var(--court);font-weight:600;font-size:13px;border-radius:8px;padding:0 10px;cursor:pointer;white-space:nowrap}
 .celebrate{background:var(--court);color:#fff;border-radius:14px;padding:18px;margin-top:14px}
 .celebrate .k{font-size:13px;opacity:.85;text-transform:none}
 .celebrate h2{font-family:"Barlow Condensed",sans-serif;font-size:30px;margin:2px 0 8px;line-height:1}
@@ -619,6 +622,19 @@ function render(){
     day.blocks.map((b,bi)=>`<section class="block"><div class="bhead"><h2>${esc(b.h)}</h2><span class="bn">${esc(b.bn)}</span></div>${b.items.map(itemHTML).join("")}<button class="addex" data-addex="${bi}">+ Add exercise to ${esc(b.h)}</button></section>`).join("")+
     ((ARCHIVE[day.id]||[]).filter(i=>i.removed).length?`<section class="block"><div class="bhead"><h2>Removed</h2><span class="bn">Tap restore to bring one back</span></div><div class="card"><ul class="rows">${ARCHIVE[day.id].filter(i=>i.removed).map(i=>`<li><span class="m">${esc(i.name)}</span><button class="export" style="margin:0;padding:4px 12px" data-restore="${esc(i.id)}">Restore</button></li>`).join("")}</ul></div></section>`:"");
 }
+function choose(text, options){ // options: [{v,l,primary}]
+  return new Promise(res=>{
+    const m=document.createElement("div"); m.className="modal"; m.setAttribute("role","dialog"); m.setAttribute("aria-modal","true");
+    m.innerHTML=`<div class="box"><p>${esc(text)}</p><div class="row" style="flex-wrap:wrap">${options.map(o=>`<button class="${o.primary?"yes":"no"}" data-v="${o.v}">${esc(o.l)}</button>`).join("")}</div></div>`;
+    const done=v=>{ m.remove(); res(v); };
+    m.addEventListener("click",e=>{ const b=e.target.closest("[data-v]"); if(b) done(b.dataset.v); else if(e.target===m) done(null); });
+    document.body.appendChild(m);
+  });
+}
+let csvTarget=null; // {date, day}
+function pickCSV(date, day){ csvTarget={date, day}; let inp=document.getElementById("csvFileAny"); if(!inp){ inp=document.createElement("input"); inp.type="file"; inp.accept=".csv,text/csv"; inp.id="csvFileAny"; inp.hidden=true; document.body.appendChild(inp);
+    inp.addEventListener("change", async ()=>{ const f=inp.files[0]; inp.value=""; if(!f||!csvTarget) return; const t=csvTarget; csvTarget=null; await importCSV(await f.text(), DAYS.find(d=>d.id===t.day)||DAYS[0], t.date); }); }
+  inp.click(); }
 function ask(text, yes="Yes", no="Cancel"){
   return new Promise(res=>{
     const m=document.createElement("div"); m.className="modal"; m.setAttribute("role","dialog"); m.setAttribute("aria-modal","true");
@@ -937,7 +953,7 @@ function renderWeek(){
     const html=rows.map(x=>{ const [lab,cls]=KIND[x.k];
       const go = x.open ? `<a class="mini" href="#${x.open}">${x.auto?"View":"Open workout"}</a>` : x.link ? `<a class="mini" href="${x.link}">Open</a>` : "";
       return `<div class="wrow ${x.done?"done":""}"><button class="tick ${x.done?"on":""}" data-wk="${x.key}" ${x.auto?'data-auto="1"':""} aria-pressed="${x.done}" aria-label="Mark ${esc(x.name)} complete">${x.done?"✓":""}</button><div class="wtxt"><div class="name" style="font-size:16px">${esc(x.name)}${x.when?` <span class="k">(${x.when})</span>`:""}${go}</div>${x.sub?`<div class="rx">${esc(x.sub)}</div>`:""}${x.auto&&x.k!=="weigh"&&!x.sub?`<div class="rx">Logged in the app ✓</div>`:""}</div><span class="tag ${cls}">${lab}</span>${x.rm!=null?`<button class="del" data-wrm="${di}-${x.rm}" aria-label="Remove">✕</button>`:x.delGym?`<button class="del" data-wdelgym="${x.delGym}" aria-label="Delete this workout log">✕</button>`:x.skip?`<button class="del" data-wskip="${x.skip}" aria-label="Not doing this today">✕</button>`:""}</div>`; }).join("");
-    const add=`<div class="wadd"><select data-wadd="${di}" aria-label="Add an activity to ${esc(dt.toLocaleDateString(undefined,{weekday:"long"}))}"><option value="">+ Add what you did</option>${Object.entries(ACTS).map(([id,A])=>`<option value="${id}">${esc(A.name)}</option>`).join("")}</select></div>`;
+    const add=`<div class="wadd"><button class="wcsv" data-wcsv="${k}" type="button">⤒ Upload workout CSV</button><select data-wadd="${di}" aria-label="Add an activity to ${esc(dt.toLocaleDateString(undefined,{weekday:"long"}))}"><option value="">+ Add what you did</option>${Object.entries(ACTS).map(([id,A])=>`<option value="${id}">${esc(A.name)}</option>`).join("")}</select></div>`;
     const skipped=WEEK[di].items.filter(it=>(weekRec(m).skip||{})[di+"-"+it.id]);
     const skipHtml=skipped.length?`<p class="rx" style="margin:6px 0 0">Skipped: ${skipped.map(it=>`${esc(it.name)} <button class="mini" style="background:none;border:0;cursor:pointer;padding:0;color:var(--court);text-decoration:underline" data-wunskip="${di}-${it.id}">undo</button>`).join(" · ")}</p>`:"";
     return `<article class="card wday ${isT?"istoday":""}"><div class="calhead"><b>${dt.toLocaleDateString(undefined,{weekday:"long"})} <span class="k" style="font-family:Barlow,sans-serif;font-size:14px;font-weight:500">${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}${isT?" · today":""}</span></b><span class="k">${rows.filter(x=>x.done).length}/${rows.length}</span></div>${w.note?`<p class="sum" style="margin:0 0 6px;color:var(--muted);font-size:14px">${esc(w.note)}</p>`:""}${html}${skipHtml}${add}</article>`;
@@ -956,6 +972,7 @@ async function weekClick(e){
   const sk=e.target.closest("[data-wskip]"); if(sk){ const r=weekRec(weekStart); r.skip=r.skip||{}; r.skip[sk.dataset.wskip]=true; delete r.done[sk.dataset.wskip]; await saveWeek(weekStart,r); return; }
   const us=e.target.closest("[data-wunskip]"); if(us){ const r=weekRec(weekStart); if(r.skip) delete r.skip[us.dataset.wunskip]; await saveWeek(weekStart,r); return; }
   const dg=e.target.closest("[data-wdelgym]"); if(dg){ await deleteGymDay(dg.dataset.wdelgym); return; }
+  const wc=e.target.closest("[data-wcsv]"); if(wc){ const di=(parse(wc.dataset.wcsv).getDay()+6)%7, plan=(WEEK[di].items.find(i=>i.k==="gym")||{}).plan; pickCSV(wc.dataset.wcsv, plan||"day1"); return; }
   const tk=e.target.closest("[data-wk]"); if(!tk) return;
   if(tk.dataset.auto){ const row=tk.closest(".wrow"), d=row&&row.querySelector("[data-wdelgym]"); if(d) await deleteGymDay(d.dataset.wdelgym); return; }
   const r=weekRec(weekStart); r.done[tk.dataset.wk]=!r.done[tk.dataset.wk]; await saveWeek(weekStart,r);
@@ -971,7 +988,11 @@ async function deleteGymDay(dIso){
 }
 async function weekAdd(sel){
   const v=sel.value; if(!v) return; const di=+sel.dataset.wadd, r=weekRec(weekStart);
-  if(ACTS[v].k==="gym"){ const dt=parse(weekStart); dt.setDate(dt.getDate()+di); sel.value=""; if(await ask(`Log the ${ACTS[v].name.replace("Strength: ","")} workout for ${fmtDate(iso(dt))} now? You’ll enter your sets, and the day fills in automatically.`,"Open workout","Just tick it")){ location.hash="#log-"+ACTS[v].day; setTimeout(()=>{ const de=document.querySelector("[data-sd]"); if(de){ de.value=iso(dt); de.dispatchEvent(new Event("input",{bubbles:true})); } },50); return; } }
+  if(ACTS[v].k==="gym"){ const dt=parse(weekStart); dt.setDate(dt.getDate()+di); sel.value="";
+    const c=await choose(`${ACTS[v].name} on ${fmtDate(iso(dt))}. How do you want to add it?`,[{v:"log",l:"Log sets now",primary:true},{v:"csv",l:"Upload CSV"},{v:"tick",l:"Just tick it"},{v:"x",l:"Cancel"}]);
+    if(!c||c==="x") return;
+    if(c==="csv"){ pickCSV(iso(dt), ACTS[v].day); return; }
+    if(c==="log"){ location.hash="#log-"+ACTS[v].day; setTimeout(()=>{ const de=document.querySelector("[data-sd]"); if(de){ de.value=iso(dt); de.dispatchEvent(new Event("input",{bubbles:true})); } },50); return; } }
   (r.extra[di] ||= []).push(v); r.done[di+"-x"+(r.extra[di].length-1)]=true; await saveWeek(weekStart,r);
 }
 
@@ -1186,7 +1207,7 @@ function parseCSV(t){
   if(f!==""||row.length){ row.push(f); rows.push(row); }
   return rows.filter(r=>r.some(x=>x.trim()!==""));
 }
-async function importCSV(text, pageDay){
+async function importCSV(text, pageDay, forceDate){
   const rows=parseCSV(text); if(!rows.length){ alert("That file is empty."); return; }
   const head=rows[0].map(h=>h.trim().toLowerCase()), col=n=>head.indexOf(n);
   if(col("exercise")<0 && col("slot")<0){ alert("Couldn’t read that CSV: it needs an “exercise” or “slot” column. Download the template to see the format."); return; }
@@ -1200,7 +1221,7 @@ async function importCSV(text, pageDay){
         || items.find(i=>name && norm(i.name)===norm(name))
         || items.find(i=>slot && norm(i.code)===norm(slot));
     if(!it && name){ for(const dd of DAYS) for(const b of dd.blocks) for(const i of b.items) if(!it && i.type && norm(i.name)===norm(name)) it=i; }
-    const ds=get("date")||today(); if(!/^\d{4}-\d{2}-\d{2}$/.test(ds)){ missed.push((name||slot)+" (bad date “"+ds+"”)"); return; }
+    const ds=forceDate||get("date")||today(); if(!/^\d{4}-\d{2}-\d{2}$/.test(ds)){ missed.push((name||slot)+" (bad date “"+ds+"”)"); return; }
     if(!it){ if(name||slot) missed.push(name||slot); return; }
     const e={d:ds, t:Date.now()+found.length};
     Object.entries(CSV_MAP).forEach(([c,k])=>{ const v=num(get(c)); if(v!=null) e[k]=v; });
